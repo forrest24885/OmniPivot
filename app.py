@@ -41,7 +41,7 @@ HTML_PAGE = """
       font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at 20% 20%, #efe7d8 0%, #e8dfcf 40%, #e2d6c1 100%);
+        url("/static/3789ff92-f760-4858-85e2-98ffc84beda3.png") center/cover no-repeat fixed;
       display: flex;
       justify-content: center;
       padding: 22px;
