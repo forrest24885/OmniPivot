@@ -1157,6 +1157,165 @@ def _draw_dashed_path(draw_obj: ImageDraw.ImageDraw, path: Path, dash: int, gap:
       draw_obj.line((sampled[i - 1], sampled[i]), fill=fill, width=width)
 
 
+_STAMP_SPACING_PX: float = 50.0
+_MIN_STAMP_SIZE: float = 5.0
+_MAX_STAMP_SIZE: float = 10.0
+_MIN_STAMP_ALPHA: int = 150
+_MAX_STAMP_ALPHA: int = 210
+
+
+def _petal_polygon(
+  cx: float, cy: float, length: float, width: float, angle: float
+) -> list[tuple[float, float]]:
+  """Return polygon points for one narrow-ellipse petal centred at (cx, cy) pointing in direction angle."""
+  cos_a = math.cos(angle)
+  sin_a = math.sin(angle)
+  ex = cx + cos_a * length * 0.45
+  ey = cy + sin_a * length * 0.45
+  pts: list[tuple[float, float]] = []
+  for i in range(12):
+    t = 2 * math.pi * i / 12
+    u = math.cos(t) * length * 0.5
+    v = math.sin(t) * width * 0.45
+    pts.append((ex + cos_a * u - sin_a * v, ey + sin_a * u + cos_a * v))
+  return pts
+
+
+def _draw_stamp(
+  draw_obj: ImageDraw.ImageDraw,
+  imagery: str,
+  cx: float,
+  cy: float,
+  size: float,
+  angle: float,
+  fill: tuple[int, int, int, int],
+) -> None:
+  """Draw a small imagery-specific decorative motif at pixel position (cx, cy)."""
+  a_val = fill[3]
+  if imagery in ("花", "云花"):
+    # 5-petal flower
+    for i in range(5):
+      pa = angle + i * (2 * math.pi / 5)
+      draw_obj.polygon(_petal_polygon(cx, cy, size * 1.1, size * 0.38, pa), fill=fill)
+    cr = max(1.0, size * 0.22)
+    draw_obj.ellipse([cx - cr, cy - cr, cx + cr, cy + cr], fill=(255, 245, 180, a_val))
+  elif imagery == "月":
+    # Crescent polygon: back semicircle of outer circle + reversed same arc on shifted inner circle
+    outer_r = size
+    inner_r = size * 0.72
+    inner_off = size * 0.32
+    face = angle
+    pts_m: list[tuple[float, float]] = []
+    for i in range(13):
+      a = face + math.pi / 2 + math.pi * i / 12
+      pts_m.append((cx + outer_r * math.cos(a), cy + outer_r * math.sin(a)))
+    icx = cx + inner_off * math.cos(face)
+    icy = cy + inner_off * math.sin(face)
+    for i in range(12, -1, -1):
+      a = face + math.pi / 2 + math.pi * i / 12
+      pts_m.append((icx + inner_r * math.cos(a), icy + inner_r * math.sin(a)))
+    draw_obj.polygon(pts_m, fill=fill)
+  elif imagery == "山":
+    # Two overlapping mountain triangles
+    cos_a2 = math.cos(angle)
+    sin_a2 = math.sin(angle)
+    cos_p = math.cos(angle + math.pi / 2)
+    sin_p = math.sin(angle + math.pi / 2)
+    for k, (h, w2) in enumerate([(size * 1.1, size * 0.75), (size * 0.72, size * 0.52)]):
+      offset_w = (k - 0.5) * size * 0.75
+      bx = cx + cos_p * offset_w
+      by = cy + sin_p * offset_w
+      tip = (bx + cos_a2 * h, by + sin_a2 * h)
+      bl = (bx - cos_p * w2, by - sin_p * w2)
+      br = (bx + cos_p * w2, by + sin_p * w2)
+      draw_obj.polygon([tip, bl, br], fill=(fill[0], fill[1], fill[2], max(0, fill[3] - k * 28)))
+  elif imagery == "雪":
+    # 6-arm snowflake with small side branches
+    arm_len = size * 1.1
+    arm_w = max(1, int(size * 0.14))
+    branch_len = arm_len * 0.35
+    for i in range(6):
+      arm_a = angle + i * math.pi / 3
+      ex2 = cx + math.cos(arm_a) * arm_len
+      ey2 = cy + math.sin(arm_a) * arm_len
+      draw_obj.line([(cx, cy), (ex2, ey2)], fill=fill, width=arm_w)
+      mid_x = cx + math.cos(arm_a) * arm_len * 0.55
+      mid_y = cy + math.sin(arm_a) * arm_len * 0.55
+      for delta in (-math.pi / 5, math.pi / 5):
+        ba = arm_a + delta
+        draw_obj.line(
+          [(mid_x, mid_y), (mid_x + math.cos(ba) * branch_len, mid_y + math.sin(ba) * branch_len)],
+          fill=fill, width=arm_w,
+        )
+  elif imagery in ("云", "风"):
+    # 3 overlapping puffs
+    puff_r = size * 0.55
+    for i in range(3):
+      pa = angle + i * (2 * math.pi / 3)
+      ocx = cx + math.cos(pa) * size * 0.42
+      ocy = cy + math.sin(pa) * size * 0.42
+      draw_obj.ellipse([ocx - puff_r, ocy - puff_r, ocx + puff_r, ocy + puff_r], fill=fill)
+  elif imagery in ("水", "柳"):
+    # Wavy line
+    cos_a3 = math.cos(angle)
+    sin_a3 = math.sin(angle)
+    wave_pts: list[tuple[float, float]] = []
+    for i in range(15):
+      t3 = i / 14
+      lx = (t3 - 0.5) * size * 2.6
+      ly = math.sin(t3 * 2 * math.pi) * size * 0.42
+      wave_pts.append((cx + cos_a3 * lx - sin_a3 * ly, cy + sin_a3 * lx + cos_a3 * ly))
+    line_w = max(1, int(size * 0.18))
+    for i in range(1, len(wave_pts)):
+      draw_obj.line([wave_pts[i - 1], wave_pts[i]], fill=fill, width=line_w)
+  else:
+    # Generic: 4-petal cross
+    for i in range(4):
+      pa2 = angle + i * (math.pi / 2)
+      draw_obj.polygon(_petal_polygon(cx, cy, size, size * 0.35, pa2), fill=fill)
+
+
+def _generate_stamp_instructions(
+  scaled_strokes: list[Path],
+  imagery_list: list[str],
+  axes: int,
+  canvas_size: int,
+) -> list[dict[str, Any]]:
+  """Return imagery_stamp instructions placed at regular intervals along each stroke."""
+  if not imagery_list or not scaled_strokes:
+    return []
+  safe_axes = max(2, int(axes))
+  instructions: list[dict[str, Any]] = []
+  stamp_spacing = _STAMP_SPACING_PX
+
+  for stroke in scaled_strokes:
+    if len(stroke) < 2:
+      continue
+    total_len = sum(_distance(stroke[i], stroke[i + 1]) for i in range(len(stroke) - 1))
+    stamp_count = max(2, int(total_len / stamp_spacing))
+    nodes = _resample_evenly(stroke, max(stamp_count * 5, 24))
+    frames = _compute_frames(nodes)
+    for j in range(stamp_count):
+      t = (j + 0.5) / stamp_count
+      node, tangent, _normal = _sample_frame(nodes, frames, t)
+      tang_angle = math.atan2(tangent[1], tangent[0])
+      img_type = imagery_list[j % len(imagery_list)]
+      stamp_size = random.uniform(_MIN_STAMP_SIZE, _MAX_STAMP_SIZE)
+      for axis_idx in range(safe_axes):
+        rot = axis_idx * (2 * math.pi / safe_axes)
+        for mirrored in (False, True):
+          sx, sy = _transform_point(node[0], node[1], rot, mirrored, canvas_size / 2)
+          stamp_a = tang_angle + rot + (math.pi if mirrored else 0.0)
+          instructions.append({
+            "kind": "imagery_stamp",
+            "imagery": img_type,
+            "center": (sx, sy),
+            "size": stamp_size,
+            "angle": stamp_a,
+          })
+  return instructions
+
+
 def _finalize_png_response(image: Image.Image) -> Response:
   output = io.BytesIO()
   image.save(output, format="PNG")
@@ -1219,6 +1378,8 @@ def generate() -> Response:
 
     size = 800
     center = size / 2
+    stamp_instructions = _generate_stamp_instructions(scaled_strokes, imagery_list, axes, size)
+    drawing_instructions.extend(stamp_instructions)
     background = Image.new("RGBA", (size, size), (245, 240, 230, 255))
     draw = ImageDraw.Draw(background, "RGBA")
 
@@ -1295,6 +1456,25 @@ def generate() -> Response:
             center_pt[1] + radius,
           ),
           fill=(base[0], base[1], base[2], alpha),
+        )
+      elif kind == "imagery_stamp":
+        center_pt = instruction.get("center")
+        if not center_pt:
+          continue
+        img_type = str(instruction.get("imagery", first_imagery))
+        stamp_size = float(instruction.get("size", 7.0))
+        stamp_angle = float(instruction.get("angle", 0.0))
+        stamp_hex = IMAGERY_COLOR_MAP.get(img_type, primary_hex)
+        stamp_rgb = _hex_to_rgb(stamp_hex)
+        stamp_alpha = random.randint(_MIN_STAMP_ALPHA, _MAX_STAMP_ALPHA)
+        _draw_stamp(
+          overlay_draw,
+          img_type,
+          center_pt[0],
+          center_pt[1],
+          stamp_size,
+          stamp_angle,
+          (stamp_rgb[0], stamp_rgb[1], stamp_rgb[2], stamp_alpha),
         )
 
     overlay = overlay.filter(ImageFilter.GaussianBlur(radius=0.8))
