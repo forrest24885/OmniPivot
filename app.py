@@ -1157,6 +1157,13 @@ def _draw_dashed_path(draw_obj: ImageDraw.ImageDraw, path: Path, dash: int, gap:
       draw_obj.line((sampled[i - 1], sampled[i]), fill=fill, width=width)
 
 
+_STAMP_SPACING_PX: float = 50.0
+_MIN_STAMP_SIZE: float = 5.0
+_MAX_STAMP_SIZE: float = 10.0
+_MIN_STAMP_ALPHA: int = 150
+_MAX_STAMP_ALPHA: int = 210
+
+
 def _petal_polygon(
   cx: float, cy: float, length: float, width: float, angle: float
 ) -> list[tuple[float, float]]:
@@ -1279,7 +1286,7 @@ def _generate_stamp_instructions(
     return []
   safe_axes = max(2, int(axes))
   instructions: list[dict[str, Any]] = []
-  stamp_spacing = 50.0  # pixels between consecutive stamps along arc length
+  stamp_spacing = _STAMP_SPACING_PX
 
   for stroke in scaled_strokes:
     if len(stroke) < 2:
@@ -1293,7 +1300,7 @@ def _generate_stamp_instructions(
       node, tangent, _normal = _sample_frame(nodes, frames, t)
       tang_angle = math.atan2(tangent[1], tangent[0])
       img_type = imagery_list[j % len(imagery_list)]
-      stamp_size = random.uniform(5.0, 10.0)
+      stamp_size = random.uniform(_MIN_STAMP_SIZE, _MAX_STAMP_SIZE)
       for axis_idx in range(safe_axes):
         rot = axis_idx * (2 * math.pi / safe_axes)
         for mirrored in (False, True):
@@ -1459,7 +1466,7 @@ def generate() -> Response:
         stamp_angle = float(instruction.get("angle", 0.0))
         stamp_hex = IMAGERY_COLOR_MAP.get(img_type, primary_hex)
         stamp_rgb = _hex_to_rgb(stamp_hex)
-        stamp_alpha = random.randint(150, 210)
+        stamp_alpha = random.randint(_MIN_STAMP_ALPHA, _MAX_STAMP_ALPHA)
         _draw_stamp(
           overlay_draw,
           img_type,
