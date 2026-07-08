@@ -1481,7 +1481,7 @@ def generate() -> Response:
     image = Image.alpha_composite(background, overlay)
     draw = ImageDraw.Draw(image, "RGBA")
 
-    stamp_text = "璇玑诗绘"
+    stamp_text = "璇玑—万象"
     stamp_font = ImageFont.load_default()
     stamp_bbox = draw.textbbox((0, 0), stamp_text, font=stamp_font)
     stamp_w = stamp_bbox[2] - stamp_bbox[0]
