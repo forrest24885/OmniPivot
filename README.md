@@ -2,6 +2,29 @@
 
 一个单文件 Flask 绘图应用：前端用于对称笔画创作，后端根据诗句意象生成图案。
 
+## 让任何人都能访问（公网部署）
+
+推荐用 Render，免费方案即可快速拿到公开网址。
+
+### 方案 A：Render 一键部署（推荐）
+
+仓库已包含部署文件：
+- `render.yaml`
+- `Procfile`
+- `requirements.txt`（已包含 `gunicorn`）
+
+操作步骤：
+
+1. 把此项目推送到 GitHub。
+2. 登录 Render，点击 New + -> Blueprint。
+3. 选择你的 GitHub 仓库并创建服务。
+4. 等待构建完成后，Render 会给你一个 `https://xxxx.onrender.com` 的公开地址。
+5. 把该地址发给任何人即可访问。
+
+说明：
+- Render 免费实例有冷启动，首次打开可能慢几秒。
+- 服务启动命令使用 `gunicorn`，适合公网环境。
+
 ## 本地运行
 
 1. 安装依赖
@@ -14,6 +37,12 @@ pip install -r requirements.txt
 
 ```bash
 python app.py
+```
+
+如需模拟线上启动方式，可运行：
+
+```bash
+gunicorn app:app --bind 0.0.0.0:5000 --workers 2 --threads 4 --timeout 120
 ```
 
 3. 打开浏览器访问
