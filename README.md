@@ -38,9 +38,9 @@ Python 依赖: requirements.txt
 
 
 运行指南
-1. 克隆仓库
+1.克隆仓库
 
-```bash
+
 git clone https://github.com/forrest24885/OmniPivot.git
 cd OmniPivot
 2.# Linux / macOS
@@ -51,7 +51,7 @@ source venv/bin/activate
 python -m venv venv
 venv\Scripts\activate
 
-pip install -r requirements.txt
+3.pip install -r requirements.txt
 
 
 技术栈
