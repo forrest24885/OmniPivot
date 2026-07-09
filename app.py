@@ -8,425 +8,12 @@ import colorsys
 from hashlib import md5
 from typing import Any, Callable
 
-from flask import Flask, Response, request
+from flask import Flask, Response, render_template, request
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 app = Flask(__name__)
 PARTICLE_PALETTE = ("#F2C94C", "#F9D976", "#FFFDE7")
-
-HTML_PAGE = """
-<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>璇玑—万象</title>
-  <style>
-    :root {
-      --paper: #f5f0e6;
-      --ink: #2f3a2f;
-      --jade: #4f6f66;
-      --vermillion: #9d4a3f;
-      --mist: #d8d1c4;
-      --line: #b9ac95;
-      --panel: #f9f5ec;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
-      color: var(--ink);
-      background:
-        linear-gradient(rgba(245, 240, 230, 0.78), rgba(245, 240, 230, 0.78)),
-        url('/static/3789ff92-f760-4858-85e2-98ffc84beda3.png') center center / cover no-repeat fixed,
-        radial-gradient(circle at 20% 20%, #efe7d8 0%, #e8dfcf 40%, #e2d6c1 100%);
-      display: flex;
-      justify-content: center;
-      padding: 22px;
-    }
-
-    .app-shell {
-      width: min(1200px, 100%);
-      display: grid;
-      grid-template-columns: minmax(320px, 460px) minmax(520px, 1fr);
-      gap: 24px;
-      align-items: start;
-    }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      box-shadow: 0 8px 20px rgba(63, 53, 37, 0.08);
-      padding: 18px;
-    }
-
-    .controls {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-bottom: 14px;
-    }
-
-    label {
-      font-size: 14px;
-      letter-spacing: 0.04em;
-    }
-
-    input[type="range"] {
-      accent-color: var(--jade);
-      width: 180px;
-    }
-
-    .btn {
-      border: 1px solid transparent;
-      border-radius: 8px;
-      padding: 8px 14px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: transform 120ms ease, background-color 120ms ease;
-    }
-
-    .btn:active {
-      transform: scale(0.98);
-    }
-
-    .btn-clear {
-      background: #ebe3d3;
-      color: var(--ink);
-      border-color: #c7b99f;
-    }
-
-    .btn-generate {
-      background: var(--jade);
-      color: #f7f4ed;
-      border-color: #3c584f;
-    }
-
-    .canvas-wrap {
-      display: flex;
-      justify-content: center;
-      margin-bottom: 16px;
-    }
-
-    #drawCanvas {
-      width: 460px;
-      height: 460px;
-      max-width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: var(--paper);
-      touch-action: none;
-      box-shadow: inset 0 0 0 1px rgba(124, 108, 87, 0.12);
-    }
-
-    .poem-row {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 10px;
-      align-items: center;
-    }
-
-    #poemInput {
-      width: 100%;
-      border: 1px solid #cdbfa8;
-      border-radius: 8px;
-      padding: 10px 12px;
-      background: #fffdf8;
-      color: var(--ink);
-      font-size: 15px;
-    }
-
-    .preview-title {
-      margin: 0 0 10px;
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-    }
-
-    .image-box {
-      min-height: 620px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: linear-gradient(180deg, #fbf7ef 0%, #f4eddf 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      overflow: hidden;
-    }
-
-    #resultImage {
-      max-width: 100%;
-      max-height: 760px;
-      height: auto;
-      display: none;
-    }
-
-    #placeholder {
-      color: #7a6d5b;
-      font-size: 14px;
-      text-align: center;
-      padding: 16px;
-      line-height: 1.6;
-    }
-
-    .spinner {
-      width: 42px;
-      height: 42px;
-      border: 3px solid #d7cbb8;
-      border-top-color: var(--jade);
-      border-radius: 50%;
-      animation: spin 0.9s linear infinite;
-      display: none;
-      position: absolute;
-    }
-
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-
-    .hint {
-      margin-top: 10px;
-      color: #7f7261;
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    @media (max-width: 980px) {
-      .app-shell {
-        grid-template-columns: 1fr;
-      }
-
-      #drawCanvas {
-        width: 420px;
-        height: 420px;
-      }
-
-      .image-box {
-        min-height: 420px;
-      }
-    }
-  </style>
-</head>
-<body>
-  <main class="app-shell">
-    <section class="panel">
-      <div class="controls">
-        <label for="axesSlider">对称轴数: <strong id="axesValue">6</strong></label>
-        <input id="axesSlider" type="range" min="2" max="12" value="6" />
-        <label for="styleSlider">意象形态强度: <strong id="styleValue">70%</strong></label>
-        <input id="styleSlider" type="range" min="0" max="100" value="70" />
-        <button id="clearBtn" class="btn btn-clear" type="button">清空</button>
-      </div>
-
-      <div class="canvas-wrap">
-        <canvas id="drawCanvas" width="600" height="600"></canvas>
-      </div>
-
-      <div class="poem-row">
-        <input id="poemInput" type="text" placeholder="输入一句中文诗句" maxlength="60" />
-        <button id="generateBtn" class="btn btn-generate" type="button">Generate Pattern</button>
-      </div>
-      <p class="hint">按住并拖动画布开始创作，支持鼠标和触控。</p>
-    </section>
-
-    <aside class="panel">
-      <h2 class="preview-title">生成结果</h2>
-      <div class="image-box">
-        <div id="spinner" class="spinner"></div>
-        <img id="resultImage" alt="生成的对称图案" />
-        <div id="placeholder">点击“Generate Pattern”后，
-          图案会在这里出现。</div>
-      </div>
-    </aside>
-  </main>
-
-  <script>
-    const canvas = document.getElementById('drawCanvas');
-    const ctx = canvas.getContext('2d');
-    const axesSlider = document.getElementById('axesSlider');
-    const axesValue = document.getElementById('axesValue');
-    const styleSlider = document.getElementById('styleSlider');
-    const styleValue = document.getElementById('styleValue');
-    const clearBtn = document.getElementById('clearBtn');
-    const poemInput = document.getElementById('poemInput');
-    const generateBtn = document.getElementById('generateBtn');
-    const resultImage = document.getElementById('resultImage');
-    const placeholder = document.getElementById('placeholder');
-    const spinner = document.getElementById('spinner');
-
-    const center = { x: canvas.width / 2, y: canvas.height / 2 };
-
-    let drawing = false;
-    let currentStroke = [];
-    let strokes = [];
-
-    function setBrushStyle() {
-      ctx.lineWidth = 1.6;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#2f3a2f';
-      ctx.globalAlpha = 0.95;
-    }
-
-    function getAxes() {
-      return Number.parseInt(axesSlider.value, 10) || 6;
-    }
-
-    function getStyleStrength() {
-      const raw = Number.parseInt(styleSlider.value, 10);
-      const safe = Number.isFinite(raw) ? raw : 70;
-      return Math.max(0, Math.min(100, safe)) / 100;
-    }
-
-    function toCanvasPoint(event) {
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      return {
-        x: (event.clientX - rect.left) * scaleX,
-        y: (event.clientY - rect.top) * scaleY
-      };
-    }
-
-    function rotateMirrorPoint(point, angle, mirrored) {
-      const x0 = point.x - center.x;
-      const y0 = point.y - center.y;
-      const mx = mirrored ? -x0 : x0;
-      const cosA = Math.cos(angle);
-      const sinA = Math.sin(angle);
-      const rx = mx * cosA - y0 * sinA;
-      const ry = mx * sinA + y0 * cosA;
-      return { x: rx + center.x, y: ry + center.y };
-    }
-
-    function drawSymmetricSegment(p1, p2) {
-      const axes = getAxes();
-      const unit = (Math.PI * 2) / axes;
-
-      setBrushStyle();
-      for (let i = 0; i < axes; i += 1) {
-        const angle = unit * i;
-        for (const mirrored of [false, true]) {
-          const a = rotateMirrorPoint(p1, angle, mirrored);
-          const b = rotateMirrorPoint(p2, angle, mirrored);
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          ctx.stroke();
-        }
-      }
-    }
-
-    function startStroke(event) {
-      event.preventDefault();
-      drawing = true;
-      currentStroke = [];
-      const p = toCanvasPoint(event);
-      currentStroke.push(p);
-      canvas.setPointerCapture(event.pointerId);
-    }
-
-    function moveStroke(event) {
-      if (!drawing) return;
-      event.preventDefault();
-      const p = toCanvasPoint(event);
-      const prev = currentStroke[currentStroke.length - 1];
-      currentStroke.push(p);
-      drawSymmetricSegment(prev, p);
-    }
-
-    function endStroke(event) {
-      if (!drawing) return;
-      drawing = false;
-      if (currentStroke.length > 0) {
-        const normalized = currentStroke.map((p) => ({ x: Number(p.x.toFixed(2)), y: Number(p.y.toFixed(2)) }));
-        strokes.push(normalized);
-      }
-      currentStroke = [];
-      if (event.pointerId !== undefined) {
-        try {
-          canvas.releasePointerCapture(event.pointerId);
-        } catch (e) {
-          // Ignore release errors when capture is already gone.
-        }
-      }
-    }
-
-    function clearCanvas() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      strokes = [];
-      currentStroke = [];
-      resultImage.style.display = 'none';
-      placeholder.style.display = 'block';
-    }
-
-    async function generatePattern() {
-      const payload = {
-        strokes,
-        poem: poemInput.value.trim(),
-        axes: getAxes(),
-        styleStrength: getStyleStrength(),
-        animated: true,
-        frames: 36
-      };
-
-      spinner.style.display = 'block';
-      placeholder.style.display = 'none';
-      generateBtn.disabled = true;
-
-      try {
-        const response = await fetch('/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-          throw new Error('生成失败，请重试。');
-        }
-
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        resultImage.src = url;
-        resultImage.style.display = 'block';
-      } catch (err) {
-        placeholder.textContent = err.message || '网络错误，请稍后再试。';
-        placeholder.style.display = 'block';
-      } finally {
-        spinner.style.display = 'none';
-        generateBtn.disabled = false;
-      }
-    }
-
-    axesSlider.addEventListener('input', () => {
-      axesValue.textContent = axesSlider.value;
-    });
-
-    styleSlider.addEventListener('input', () => {
-      styleValue.textContent = `${styleSlider.value}%`;
-    });
-
-    clearBtn.addEventListener('click', clearCanvas);
-    generateBtn.addEventListener('click', generatePattern);
-
-    canvas.addEventListener('pointerdown', startStroke);
-    canvas.addEventListener('pointermove', moveStroke);
-    canvas.addEventListener('pointerup', endStroke);
-    canvas.addEventListener('pointercancel', endStroke);
-    canvas.addEventListener('pointerleave', endStroke);
-  </script>
-</body>
-</html>
-"""
+PARTICLE_PALETTE_TEAL = ("#4F8B7D", "#5BA89A", "#7BC1AA")
 
 
 def _clamp_axes(value: Any) -> int:
@@ -481,30 +68,13 @@ def _transform_point(x: float, y: float, angle: float, mirrored: bool, center: f
     return rx + center, ry + center
 
 
-def _load_font(size: int) -> ImageFont.ImageFont:
-    candidates = [
-        "/usr/share/fonts/truetype/noto/NotoSerifCJK-Regular.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-    ]
-    for path in candidates:
-        try:
-            return ImageFont.truetype(path, size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
-
 
 Point = tuple[float, float]
 Path = list[Point]
 
 
-def _clamp01(value: float) -> float:
-    return max(0.0, min(1.0, value))
-
-
 def _normalize_path(path: Path) -> Path:
-    return [(_clamp01(x), _clamp01(y)) for x, y in path]
+    return [(_clampf(x, 0.0, 1.0), _clampf(y, 0.0, 1.0)) for x, y in path]
 
 
 def generate_cloud_flower_path(cx=0.5, cy=0.5, scale=0.4, petals=6, turns=2.5, points=200):
@@ -566,7 +136,7 @@ def _apply_organic_noise(path: Path, amplitude: float = 0.016, seed: float | Non
     n1 = _noise2d(x + idx * 0.009, y - idx * 0.013, seed)
     n2 = _noise2d(x + 3.7, y + 7.9, seed + 1.37)
     w = amplitude * (0.55 + 0.45 * math.sin(idx * 0.21 + seed * 0.03))
-    organic.append((_clamp01(x + n1 * w), _clamp01(y + n2 * w)))
+    organic.append((_clampf(x + n1 * w, 0.0, 1.0), _clampf(y + n2 * w, 0.0, 1.0)))
   return organic
 
 
@@ -776,6 +346,24 @@ def motif_zhou() -> Path:
     return _apply_organic_noise(path, amplitude=0.013, seed=73.0)
 
 
+def motif_yu_rain() -> Path:
+    """Generate raindrops pattern for rain imagery."""
+    path: Path = []
+    rows = 6
+    cols = 5
+    for row in range(rows):
+      y0 = 0.15 + row * 0.13
+      for col in range(cols):
+        x0 = 0.2 + col * 0.15 + (0.075 if row % 2 else 0.0)
+        steps = 25
+        for i in range(steps):
+          t = i / (steps - 1)
+          x = x0 + 0.035 * math.cos(t * 2 * math.pi)
+          y = y0 + 0.055 * t - 0.025 * math.sin(t * 2 * math.pi)
+          path.append((x, y))
+    return _apply_organic_noise(path, amplitude=0.011, seed=79.0)
+
+
 BASE_MOTIF_GENERATORS: dict[str, Callable[[], Path]] = {
   "云花": lambda: _normalize_path(generate_cloud_flower_path()),
   "云": lambda: generate_spiral_path(0.5, 0.5, 0.4, 3, 50),
@@ -793,10 +381,8 @@ BASE_MOTIF_GENERATORS: dict[str, Callable[[], Path]] = {
     "竹": motif_zhu,
     "楼": motif_lou,
     "舟": motif_zhou,
+    "雨": motif_yu_rain,
   }
-
-# Compatibility alias for prompt-style naming.
-IMAGERY_MAP = BASE_MOTIF_GENERATORS
 
 
 def extract_imagery(poem: str) -> list[str]:
@@ -819,7 +405,7 @@ def _fuse_pair(path_a: Path, path_b: Path, weight_a: float = 0.6) -> Path:
       y = weight_a * a_pt[1] + weight_b * b_pt[1]
       px = 0.008 * _noise2d(x + idx * 0.01, y, seed)
       py = 0.008 * _noise2d(x, y + idx * 0.012, seed + 2.1)
-      fused.append((_clamp01(x + px), _clamp01(y + py)))
+      fused.append((_clampf(x + px, 0.0, 1.0), _clampf(y + py, 0.0, 1.0)))
     return fused
 
 
@@ -835,8 +421,8 @@ def _scatter_near_path(main_path: Path, source_path: Path, count: int = 14) -> l
       anchor = random.choice(anchors)
       theta = random.uniform(0.0, 2 * math.pi)
       radius = random.uniform(0.02, 0.1)
-      cx = _clamp01(anchor[0] + radius * math.cos(theta))
-      cy = _clamp01(anchor[1] + radius * math.sin(theta))
+      cx = _clampf(anchor[0] + radius * math.cos(theta), 0.0, 1.0)
+      cy = _clampf(anchor[1] + radius * math.sin(theta), 0.0, 1.0)
 
       scale = random.uniform(0.06, 0.16)
       rot = random.uniform(0.0, 2 * math.pi)
@@ -849,8 +435,8 @@ def _scatter_near_path(main_path: Path, source_path: Path, count: int = 14) -> l
         ly = (my - 0.5) * scale
         ox = lx * cos_r - ly * sin_r
         oy = lx * sin_r + ly * cos_r
-        qx = _clamp01(cx + ox + 0.003 * _noise2d(mx, my, i * 13.0 + j * 0.1))
-        qy = _clamp01(cy + oy + 0.003 * _noise2d(my, mx, i * 17.0 + j * 0.1))
+        qx = _clampf(cx + ox + 0.003 * _noise2d(mx, my, i * 13.0 + j * 0.1), 0.0, 1.0)
+        qy = _clampf(cy + oy + 0.003 * _noise2d(my, mx, i * 17.0 + j * 0.1), 0.0, 1.0)
         mini.append((qx, qy))
       scatter_paths.append(mini)
 
@@ -876,14 +462,28 @@ def generate_fused_motif(imagery_list: list[str]) -> dict[str, Any]:
 
 
 def fuse_motifs(imagery_list: list[str]) -> dict[str, Any]:
-    valid_imagery = [item for item in imagery_list if item in IMAGERY_MAP]
+    valid_imagery = [item for item in imagery_list if item in BASE_MOTIF_GENERATORS]
 
     if "云" in valid_imagery and "花" in valid_imagery:
       main_path = _normalize_path(generate_cloud_flower_path())
       other_imagery = [img for img in valid_imagery if img not in ("云", "花", "云花")]
       scatter_paths: list[Path] = []
       for img in other_imagery:
-        motif_path = IMAGERY_MAP[img]()
+        motif_path = BASE_MOTIF_GENERATORS[img]()
+        scatter_paths.append(motif_path)
+      return {"main_path": main_path, "scatter_paths": scatter_paths}
+
+    # Special handling: when both mountain and rain are present, enhance rain effect
+    if "山" in valid_imagery and "雨" in valid_imagery:
+      main_path = BASE_MOTIF_GENERATORS["山"]()
+      other_imagery = [img for img in valid_imagery if img not in ("山", "雨")]
+      scatter_paths: list[Path] = []
+      # Add enhanced rain pattern multiple times for denser rainfall effect
+      rain_path = BASE_MOTIF_GENERATORS["雨"]()
+      scatter_paths.append(rain_path)
+      scatter_paths.append(_apply_organic_noise(rain_path, amplitude=0.008, seed=81.0))
+      for img in other_imagery:
+        motif_path = BASE_MOTIF_GENERATORS[img]()
         scatter_paths.append(motif_path)
       return {"main_path": main_path, "scatter_paths": scatter_paths}
 
@@ -931,49 +531,8 @@ def _resample_evenly(points: Path, sample_count: int) -> Path:
   return result
 
 
-def _tangent_angle(sampled_points: Path, index: int) -> float:
-  if not sampled_points:
-    return 0.0
-
-  if index < len(sampled_points) - 1:
-    p0 = sampled_points[index]
-    p1 = sampled_points[index + 1]
-  elif len(sampled_points) >= 2:
-    p0 = sampled_points[index - 1]
-    p1 = sampled_points[index]
-  else:
-    return 0.0
-
-  dx = p1[0] - p0[0]
-  dy = p1[1] - p0[1]
-  if abs(dx) < 1e-9 and abs(dy) < 1e-9:
-    return 0.0
-  return math.atan2(dy, dx)
-
-
-def _transform_points_linear(points: Path, matrix: tuple[tuple[float, float], tuple[float, float]], tx: float, ty: float) -> Path:
-  transformed: Path = []
-  for x, y in points:
-    nx = matrix[0][0] * x + matrix[0][1] * y + tx
-    ny = matrix[1][0] * x + matrix[1][1] * y + ty
-    transformed.append((nx, ny))
-  return transformed
-
-
 def _lerp_point(a: Point, b: Point, t: float) -> Point:
   return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
-
-
-def _sample_polyline(path: Path, t: float) -> Point:
-  if not path:
-    return (0.0, 0.0)
-  if len(path) == 1:
-    return path[0]
-  q = _clamp01(t) * (len(path) - 1)
-  i = int(math.floor(q))
-  j = min(i + 1, len(path) - 1)
-  frac = q - i
-  return _lerp_point(path[i], path[j], frac)
 
 
 def _compute_frames(nodes: Path) -> list[tuple[Point, Point]]:
@@ -1005,7 +564,7 @@ def _sample_frame(nodes: Path, frames: list[tuple[Point, Point]], t: float) -> t
     tangent, normal = frames[0]
     return nodes[0], tangent, normal
 
-  q = _clamp01(t) * (len(nodes) - 1)
+  q = _clampf(t, 0.0, 1.0) * (len(nodes) - 1)
   i = int(math.floor(q))
   j = min(i + 1, len(nodes) - 1)
   frac = q - i
@@ -1048,6 +607,7 @@ IMAGERY_LINE_STYLE: dict[str, dict[str, float]] = {
   "竹": {"jag": 0.8, "jag_freq": 1.2, "thickness": -0.08},
   "楼": {"jag": 1.1, "jag_freq": 2.4},
   "舟": {"arc": 0.18, "drift": 0.6},
+  "雨": {"droop": 1.8, "wave": 0.4, "drift": 0.6},
 }
 
 
@@ -1234,7 +794,7 @@ def grow_motifs_on_skeleton(
       t0 = (sig_idx + 1) / (signature_count + 1)
       sig_path: Path = []
       for su, sv in signature_source:
-        local_t = _clamp01(t0 + (su - 0.5) * signature_span)
+        local_t = _clampf(t0 + (su - 0.5) * signature_span, 0.0, 1.0)
         node, tangent, normal = _sample_frame(nodes, frames, local_t)
         along = (su - 0.5) * signature_scale * (1.2 + 0.45 * style["arc"])
         lateral = (sv - 0.5) * 2.0 * signature_scale
@@ -1266,7 +826,7 @@ def grow_motifs_on_skeleton(
 
       sampled_bud = _resample_evenly(_normalize_path(bud_source), 60)
       for su, sv in sampled_bud:
-        local_t = _clamp01(t0 + (su - 0.5) * span)
+        local_t = _clampf(t0 + (su - 0.5) * span, 0.0, 1.0)
         node, tangent, normal = _sample_frame(nodes, frames, local_t)
         lateral = (sv - 0.5) * 2.0 * bud_scale
         along = (su - 0.5) * bud_scale * 0.35
@@ -1332,6 +892,7 @@ IMAGERY_COLOR_MAP: dict[str, str] = {
   "竹": "#6E8E57",
   "楼": "#A77E5F",
   "舟": "#7B6D5A",
+  "雨": "#4F8B7D",
 }
 
 
@@ -1525,8 +1086,10 @@ def _collect_motif_bboxes(drawing_instructions: list[dict[str, Any]]) -> list[tu
   return boxes
 
 
-def generate_particles(motif_bboxes, num=300):
+def generate_particles(motif_bboxes, num=300, palette=None):
   particles: list[dict[str, Any]] = []
+  if palette is None:
+    palette = PARTICLE_PALETTE
   if not motif_bboxes:
     motif_bboxes = [(320.0, 320.0, 480.0, 480.0)]
 
@@ -1549,7 +1112,7 @@ def generate_particles(motif_bboxes, num=300):
         "life": max_life,
         "max_life": max_life,
         "size": random.randint(1, 3),
-        "color": random.choice(PARTICLE_PALETTE),
+        "color": random.choice(palette),
       }
     )
   return particles
@@ -1727,21 +1290,26 @@ def _render_pattern_image(
   image = Image.alpha_composite(background, overlay)
   draw_image = ImageDraw.Draw(image, "RGBA")
 
+  # Detect if both mountain and rain are present for special teal particle color
+  has_mountain = "山" in imagery_list
+  has_rain = "雨" in imagery_list
+  particle_palette = PARTICLE_PALETTE_TEAL if (has_mountain and has_rain) else PARTICLE_PALETTE
+
   if particles_state is not None:
     motif_bboxes = _collect_motif_bboxes(drawing_instructions)
     particles = particles_state.setdefault("particles", [])
     if new_points:
       burst_boxes = [(p[0] - 12, p[1] - 12, p[0] + 12, p[1] + 12) for p in random.sample(new_points, k=min(36, len(new_points)))]
-      particles.extend(generate_particles(burst_boxes, num=min(80, max(12, len(new_points) // 3))))
+      particles.extend(generate_particles(burst_boxes, num=min(80, max(12, len(new_points) // 3)), palette=particle_palette))
     if len(particles) < 180:
       refill = min(120, 180 - len(particles))
-      particles.extend(generate_particles(motif_bboxes, num=refill))
+      particles.extend(generate_particles(motif_bboxes, num=refill, palette=particle_palette))
     particles_state["particles"] = update_particles(particles)
     particles_state["prev_sweep"] = sweep if sweep is not None else 360.0
     draw_particles(draw_image, particles_state["particles"], size)
   else:
     motif_bboxes = _collect_motif_bboxes(drawing_instructions)
-    static_particles = generate_particles(motif_bboxes, num=300)
+    static_particles = generate_particles(motif_bboxes, num=300, palette=particle_palette)
     static_particles = update_particles(static_particles)
     draw_particles(draw_image, static_particles, size)
 
@@ -1817,7 +1385,7 @@ def _build_fallback_image(message: str, size: int = 800) -> Image.Image:
 
 @app.get("/")
 def index() -> str:
-    return HTML_PAGE
+  return render_template("index.html")
 
 
 @app.post("/generate")
