@@ -26,15 +26,7 @@
 
 目录结构概览
 
-symmetry-verse/
-├── app.py                # Flask 主程序
-├── templates/
-│   └── index.html        # 主页面（绘画交互 + 诗句输入）
-├── static/
-│   ├── textures/         # 背景纹理、印章等静态图片
-│   └── demo_static.png   # 预览图（可选）
-├── requirements.txt
-└── README.md
+
 
 入口与核心逻辑: app.py
 前端页面模板: index.html
