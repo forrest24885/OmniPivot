@@ -1,4 +1,4 @@
-<img width="1869" height="1188" alt="f417bb749f05fbb220d2bb70fa6c5a23" src="https://github.com/user-attachments/assets/514c0c35-83a3-42eb-be76-3d9ac66531b4" />
+
 # 璇玑—万象
 
 🎨 文化溯源
@@ -14,6 +14,7 @@
 3.输入一句诗（如“云想衣裳花想容”）。
 
 4.点击“生成图案”获得半动态纹样。
+<img width="1869" height="1188" alt="f417bb749f05fbb220d2bb70fa6c5a23" src="https://github.com/user-attachments/assets/514c0c35-83a3-42eb-be76-3d9ac66531b4" />
 
 5.可点击图片以保存本地
 
