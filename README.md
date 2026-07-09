@@ -59,7 +59,7 @@ Python 依赖: requirements.txt
 
 多人协作共绘一幅璇玑图
 
-动画优化：前端 WebCodecs 实时编码：接入api加强对诗句的感知，尝试理解诗句中的比喻手法。
+动画优化：前端 WebCodecs 实时编码
 
 ## 依赖版本
 
