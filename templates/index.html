@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>璇玑—万象</title>
+  <style>
+    :root {
+      --paper: #f5f0e6;
+      --ink: #2f3a2f;
+      --jade: #4f6f66;
+      --vermillion: #9d4a3f;
+      --mist: #d8d1c4;
+      --line: #b9ac95;
+      --panel: #f9f5ec;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
+      color: var(--ink);
+      background:
+        linear-gradient(rgba(245, 240, 230, 0.78), rgba(245, 240, 230, 0.78)),
+        url('/static/3789ff92-f760-4858-85e2-98ffc84beda3.png') center center / cover no-repeat fixed,
+        radial-gradient(circle at 20% 20%, #efe7d8 0%, #e8dfcf 40%, #e2d6c1 100%);
+      display: flex;
+      justify-content: center;
+      padding: 22px;
+    }
+
+    .app-shell {
+      width: min(1200px, 100%);
+      display: grid;
+      grid-template-columns: minmax(320px, 460px) minmax(520px, 1fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 8px 20px rgba(63, 53, 37, 0.08);
+      padding: 18px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    label {
+      font-size: 14px;
+      letter-spacing: 0.04em;
+    }
+
+    input[type="range"] {
+      accent-color: var(--jade);
+      width: 180px;
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: transform 120ms ease, background-color 120ms ease;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-clear {
+      background: #ebe3d3;
+      color: var(--ink);
+      border-color: #c7b99f;
+    }
+
+    .btn-generate {
+      background: var(--jade);
+      color: #f7f4ed;
+      border-color: #3c584f;
+    }
+
+    .canvas-wrap {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+
+    #drawCanvas {
+      width: 460px;
+      height: 460px;
+      max-width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper);
+      touch-action: none;
+      box-shadow: inset 0 0 0 1px rgba(124, 108, 87, 0.12);
+    }
+
+    .poem-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #poemInput {
+      width: 100%;
+      border: 1px solid #cdbfa8;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fffdf8;
+      color: var(--ink);
+      font-size: 15px;
+      font-family: "Kaiti SC", "STKaiTi", "楷体", "Kaishu", "SimKai", serif;
+    }
+
+    .preview-title {
+      margin: 0 0 10px;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+    }
+
+    .image-box {
+      min-height: 620px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: linear-gradient(180deg, #fbf7ef 0%, #f4eddf 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #resultImage {
+      max-width: 100%;
+      max-height: 760px;
+      height: auto;
+      display: none;
+    }
+
+    #placeholder {
+      color: #7a6d5b;
+      font-size: 14px;
+      text-align: center;
+      padding: 16px;
+      line-height: 1.6;
+    }
+
+    .spinner {
+      width: 42px;
+      height: 42px;
+      border: 3px solid #d7cbb8;
+      border-top-color: var(--jade);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      display: none;
+      position: absolute;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .hint {
+      margin-top: 10px;
+      color: #7f7261;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 980px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+
+      #drawCanvas {
+        width: 420px;
+        height: 420px;
+      }
+
+      .image-box {
+        min-height: 420px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <section class="panel">
+      <div class="controls">
+        <label for="axesSlider">对称轴数: <strong id="axesValue">6</strong></label>
+        <input id="axesSlider" type="range" min="2" max="12" value="6" />
+        <label for="styleSlider">意象形态强度: <strong id="styleValue">70%</strong></label>
+        <input id="styleSlider" type="range" min="0" max="100" value="70" />
+        <button id="clearBtn" class="btn btn-clear" type="button">清空</button>
+      </div>
+
+      <div class="canvas-wrap">
+        <canvas id="drawCanvas" width="600" height="600"></canvas>
+      </div>
+
+      <div class="poem-row">
+        <input id="poemInput" type="text" placeholder="输入一句中文诗句" maxlength="60" />
+        <button id="generateBtn" class="btn btn-generate" type="button">赋</button>
+      </div>
+      <p class="hint">按住并拖动画布开始创作，支持鼠标和触控。</p>
+    </section>
+
+    <aside class="panel">
+      <h2 class="preview-title">生成结果</h2>
+      <div class="image-box">
+        <div id="spinner" class="spinner"></div>
+        <img id="resultImage" alt="生成的对称图案" />
+        <div id="placeholder">点击“赋”后，
+          图案会在这里出现。</div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('drawCanvas');
+    const ctx = canvas.getContext('2d');
+    const axesSlider = document.getElementById('axesSlider');
+    const axesValue = document.getElementById('axesValue');
+    const styleSlider = document.getElementById('styleSlider');
+    const styleValue = document.getElementById('styleValue');
+    const clearBtn = document.getElementById('clearBtn');
+    const poemInput = document.getElementById('poemInput');
+    const generateBtn = document.getElementById('generateBtn');
+    const resultImage = document.getElementById('resultImage');
+    const placeholder = document.getElementById('placeholder');
+    const spinner = document.getElementById('spinner');
+
+    const center = { x: canvas.width / 2, y: canvas.height / 2 };
+
+    let drawing = false;
+    let currentStroke = [];
+    let strokes = [];
+
+    function setBrushStyle() {
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#2f3a2f';
+      ctx.globalAlpha = 0.95;
+    }
+
+    function getAxes() {
+      return Number.parseInt(axesSlider.value, 10) || 6;
+    }
+
+    function getStyleStrength() {
+      const raw = Number.parseInt(styleSlider.value, 10);
+      const safe = Number.isFinite(raw) ? raw : 70;
+      return Math.max(0, Math.min(100, safe)) / 100;
+    }
+
+    function toCanvasPoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      return {
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY
+      };
+    }
+
+    function rotateMirrorPoint(point, angle, mirrored) {
+      const x0 = point.x - center.x;
+      const y0 = point.y - center.y;
+      const mx = mirrored ? -x0 : x0;
+      const cosA = Math.cos(angle);
+      const sinA = Math.sin(angle);
+      const rx = mx * cosA - y0 * sinA;
+      const ry = mx * sinA + y0 * cosA;
+      return { x: rx + center.x, y: ry + center.y };
+    }
+
+    function drawSymmetricSegment(p1, p2) {
+      const axes = getAxes();
+      const unit = (Math.PI * 2) / axes;
+
+      setBrushStyle();
+      for (let i = 0; i < axes; i += 1) {
+        const angle = unit * i;
+        for (const mirrored of [false, true]) {
+          const a = rotateMirrorPoint(p1, angle, mirrored);
+          const b = rotateMirrorPoint(p2, angle, mirrored);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    function startStroke(event) {
+      event.preventDefault();
+      drawing = true;
+      currentStroke = [];
+      const p = toCanvasPoint(event);
+      currentStroke.push(p);
+      canvas.setPointerCapture(event.pointerId);
+    }
+
+    function moveStroke(event) {
+      if (!drawing) return;
+      event.preventDefault();
+      const p = toCanvasPoint(event);
+      const prev = currentStroke[currentStroke.length - 1];
+      currentStroke.push(p);
+      drawSymmetricSegment(prev, p);
+    }
+
+    function endStroke(event) {
+      if (!drawing) return;
+      drawing = false;
+      if (currentStroke.length > 0) {
+        const normalized = currentStroke.map((p) => ({ x: Number(p.x.toFixed(2)), y: Number(p.y.toFixed(2)) }));
+        strokes.push(normalized);
+      }
+      currentStroke = [];
+      if (event.pointerId !== undefined) {
+        try {
+          canvas.releasePointerCapture(event.pointerId);
+        } catch (e) {
+          // Ignore release errors when capture is already gone.
+        }
+      }
+    }
+
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      strokes = [];
+      currentStroke = [];
+      resultImage.style.display = 'none';
+      placeholder.style.display = 'block';
+    }
+
+    async function generatePattern() {
+      const payload = {
+        strokes,
+        poem: poemInput.value.trim(),
+        axes: getAxes(),
+        styleStrength: getStyleStrength(),
+        animated: true,
+        frames: 36
+      };
+
+      spinner.style.display = 'block';
+      placeholder.style.display = 'none';
+      generateBtn.disabled = true;
+
+      try {
+        const response = await fetch('/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          throw new Error('生成失败，请重试。');
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        resultImage.src = url;
+        resultImage.style.display = 'block';
+      } catch (err) {
+        placeholder.textContent = err.message || '网络错误，请稍后再试。';
+        placeholder.style.display = 'block';
+      } finally {
+        spinner.style.display = 'none';
+        generateBtn.disabled = false;
+      }
+    }
+
+    axesSlider.addEventListener('input', () => {
+      axesValue.textContent = axesSlider.value;
+    });
+
+    styleSlider.addEventListener('input', () => {
+      styleValue.textContent = `${styleSlider.value}%`;
+    });
+
+    clearBtn.addEventListener('click', clearCanvas);
+    generateBtn.addEventListener('click', generatePattern);
+
+    canvas.addEventListener('pointerdown', startStroke);
+    canvas.addEventListener('pointermove', moveStroke);
+    canvas.addEventListener('pointerup', endStroke);
+    canvas.addEventListener('pointercancel', endStroke);
+    canvas.addEventListener('pointerleave', endStroke);
+  </script>
+</body>
+</html>
