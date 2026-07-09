@@ -37,6 +37,22 @@ Python 依赖: requirements.txt
 本地调用生成接口并保存图片的脚本: save_generated_local.py
 
 
+运行指南
+1. 克隆仓库
+
+```bash
+git clone https://github.com/forrest24885/OmniPivot.git
+cd OmniPivot
+2.# Linux / macOS
+python3 -m venv venv
+source venv/bin/activate
+
+# Windows
+python -m venv venv
+venv\Scripts\activate
+
+pip install -r requirements.txt
+
 
 技术栈
 
