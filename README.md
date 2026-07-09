@@ -20,7 +20,7 @@
 
 动画：前端 MediaRecorder / 后端 imageio+FFmpeg
 
-
+后续改进方向：接入api加强对诗句的感知，尝试理解诗句中的比喻手法。
 
 ## 依赖版本
 
