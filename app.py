@@ -12,6 +12,7 @@ from flask import Flask, Response, request
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 app = Flask(__name__)
+PARTICLE_PALETTE = ("#F2C94C", "#F9D976", "#FFFDE7")
 
 HTML_PAGE = """
 <!doctype html>
@@ -19,7 +20,7 @@ HTML_PAGE = """
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OmniPivot Symmetry Studio</title>
+  <title>璇玑—万象</title>
   <style>
     :root {
       --paper: #f5f0e6;
@@ -41,7 +42,9 @@ HTML_PAGE = """
       font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
       color: var(--ink);
       background:
-        url("/static/3789ff92-f760-4858-85e2-98ffc84beda3.png") center/cover no-repeat fixed;
+        linear-gradient(rgba(245, 240, 230, 0.78), rgba(245, 240, 230, 0.78)),
+        url('/static/3789ff92-f760-4858-85e2-98ffc84beda3.png') center center / cover no-repeat fixed,
+        radial-gradient(circle at 20% 20%, #efe7d8 0%, #e8dfcf 40%, #e2d6c1 100%);
       display: flex;
       justify-content: center;
       padding: 22px;
@@ -50,7 +53,7 @@ HTML_PAGE = """
     .app-shell {
       width: min(1200px, 100%);
       display: grid;
-      grid-template-columns: 1fr minmax(280px, 360px);
+      grid-template-columns: minmax(320px, 460px) minmax(520px, 1fr);
       gap: 24px;
       align-items: start;
     }
@@ -113,8 +116,8 @@ HTML_PAGE = """
     }
 
     #drawCanvas {
-      width: 600px;
-      height: 600px;
+      width: 460px;
+      height: 460px;
       max-width: 100%;
       border: 1px solid var(--line);
       border-radius: 10px;
@@ -148,7 +151,7 @@ HTML_PAGE = """
     }
 
     .image-box {
-      min-height: 340px;
+      min-height: 620px;
       border: 1px solid var(--line);
       border-radius: 10px;
       background: linear-gradient(180deg, #fbf7ef 0%, #f4eddf 100%);
@@ -161,6 +164,7 @@ HTML_PAGE = """
 
     #resultImage {
       max-width: 100%;
+      max-height: 760px;
       height: auto;
       display: none;
     }
@@ -201,8 +205,13 @@ HTML_PAGE = """
         grid-template-columns: 1fr;
       }
 
+      #drawCanvas {
+        width: 420px;
+        height: 420px;
+      }
+
       .image-box {
-        min-height: 280px;
+        min-height: 420px;
       }
     }
   </style>
@@ -213,6 +222,8 @@ HTML_PAGE = """
       <div class="controls">
         <label for="axesSlider">对称轴数: <strong id="axesValue">6</strong></label>
         <input id="axesSlider" type="range" min="2" max="12" value="6" />
+        <label for="styleSlider">意象形态强度: <strong id="styleValue">70%</strong></label>
+        <input id="styleSlider" type="range" min="0" max="100" value="70" />
         <button id="clearBtn" class="btn btn-clear" type="button">清空</button>
       </div>
 
@@ -221,7 +232,7 @@ HTML_PAGE = """
       </div>
 
       <div class="poem-row">
-        <input id="poemInput" type="text" placeholder="输入一句中文诗句，例如：山色空蒙雨亦奇" maxlength="60" />
+        <input id="poemInput" type="text" placeholder="输入一句中文诗句" maxlength="60" />
         <button id="generateBtn" class="btn btn-generate" type="button">Generate Pattern</button>
       </div>
       <p class="hint">按住并拖动画布开始创作，支持鼠标和触控。</p>
@@ -243,6 +254,8 @@ HTML_PAGE = """
     const ctx = canvas.getContext('2d');
     const axesSlider = document.getElementById('axesSlider');
     const axesValue = document.getElementById('axesValue');
+    const styleSlider = document.getElementById('styleSlider');
+    const styleValue = document.getElementById('styleValue');
     const clearBtn = document.getElementById('clearBtn');
     const poemInput = document.getElementById('poemInput');
     const generateBtn = document.getElementById('generateBtn');
@@ -266,6 +279,12 @@ HTML_PAGE = """
 
     function getAxes() {
       return Number.parseInt(axesSlider.value, 10) || 6;
+    }
+
+    function getStyleStrength() {
+      const raw = Number.parseInt(styleSlider.value, 10);
+      const safe = Number.isFinite(raw) ? raw : 70;
+      return Math.max(0, Math.min(100, safe)) / 100;
     }
 
     function toCanvasPoint(event) {
@@ -354,7 +373,10 @@ HTML_PAGE = """
       const payload = {
         strokes,
         poem: poemInput.value.trim(),
-        axes: getAxes()
+        axes: getAxes(),
+        styleStrength: getStyleStrength(),
+        animated: true,
+        frames: 36
       };
 
       spinner.style.display = 'block';
@@ -389,6 +411,10 @@ HTML_PAGE = """
       axesValue.textContent = axesSlider.value;
     });
 
+    styleSlider.addEventListener('input', () => {
+      styleValue.textContent = `${styleSlider.value}%`;
+    });
+
     clearBtn.addEventListener('click', clearCanvas);
     generateBtn.addEventListener('click', generatePattern);
 
@@ -409,6 +435,32 @@ def _clamp_axes(value: Any) -> int:
     except (TypeError, ValueError):
         axes = 6
     return max(2, min(12, axes))
+
+
+def _clamp_strength(value: Any) -> float:
+    try:
+        strength = float(value)
+    except (TypeError, ValueError):
+        strength = 0.7
+
+    if strength > 1.0:
+        strength = strength / 100.0
+    return max(0.0, min(1.0, strength))
+
+
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
 
 
 def _float_or_none(value: Any) -> float | None:
@@ -980,10 +1032,103 @@ def _apply_symmetry_to_path(path: Path, axes: int, canvas_size: int) -> list[Pat
   return copies
 
 
-def grow_motifs_on_skeleton(strokes, fused_motif, axes, canvas_size=800):
+IMAGERY_LINE_STYLE: dict[str, dict[str, float]] = {
+  "云": {"wave": 1.2, "smooth": 0.2},
+  "花": {"bloom": 0.18, "wave": 0.8},
+  "水": {"wave": 3.2, "wave_freq": 1.1, "drift": 0.8},
+  "山": {"jag": 2.0, "jag_freq": 2.0, "thickness": 0.25},
+  "月": {"arc": 0.28, "smooth": 0.2},
+  "风": {"wave": 1.6, "wave_freq": 1.5, "drift": 1.4},
+  "雪": {"scatter": 0.35, "opacity": -0.06},
+  "柳": {"droop": 2.1, "wave": 0.6},
+  "鸟": {"flutter": 0.9, "drift": 0.7},
+  "鱼": {"flutter": 1.2, "wave": 0.7},
+  "鹤": {"arc": 0.22, "smooth": 0.14},
+  "松": {"jag": 1.0, "thickness": 0.18},
+  "竹": {"jag": 0.8, "jag_freq": 1.2, "thickness": -0.08},
+  "楼": {"jag": 1.1, "jag_freq": 2.4},
+  "舟": {"arc": 0.18, "drift": 0.6},
+}
+
+
+def _clampf(value: float, low: float, high: float) -> float:
+  return max(low, min(high, value))
+
+
+def _build_line_style(imagery_list: list[str], strength: float = 1.0) -> dict[str, float]:
+  base_style: dict[str, float] = {
+    "wave": 0.0,
+    "wave_freq": 1.8,
+    "jag": 0.0,
+    "jag_freq": 3.0,
+    "drift": 0.0,
+    "arc": 0.0,
+    "bloom": 0.0,
+    "droop": 0.0,
+    "flutter": 0.0,
+    "thickness": 1.0,
+    "opacity": 0.0,
+    "scatter": 1.0,
+    "smooth": 0.0,
+    "phase": 0.0,
+  }
+  style = dict(base_style)
+
+  valid = [img for img in imagery_list if img in IMAGERY_LINE_STYLE]
+  if valid:
+    digest = md5("|".join(valid).encode("utf-8")).hexdigest()
+    style["phase"] = (int(digest[:8], 16) / 0xFFFFFFFF) * (2 * math.pi)
+  else:
+    style["phase"] = math.pi * 0.5
+
+  for img in valid:
+    cfg = IMAGERY_LINE_STYLE[img]
+    style["wave"] += cfg.get("wave", 0.0)
+    style["wave_freq"] += cfg.get("wave_freq", 0.0)
+    style["jag"] += cfg.get("jag", 0.0)
+    style["jag_freq"] += cfg.get("jag_freq", 0.0)
+    style["drift"] += cfg.get("drift", 0.0)
+    style["arc"] += cfg.get("arc", 0.0)
+    style["bloom"] += cfg.get("bloom", 0.0)
+    style["droop"] += cfg.get("droop", 0.0)
+    style["flutter"] += cfg.get("flutter", 0.0)
+    style["thickness"] += cfg.get("thickness", 0.0)
+    style["opacity"] += cfg.get("opacity", 0.0)
+    style["scatter"] += cfg.get("scatter", 0.0)
+    style["smooth"] += cfg.get("smooth", 0.0)
+
+  style["wave"] = _clampf(style["wave"], 0.0, 8.0)
+  style["wave_freq"] = _clampf(style["wave_freq"], 0.8, 6.0)
+  style["jag"] = _clampf(style["jag"], 0.0, 6.0)
+  style["jag_freq"] = _clampf(style["jag_freq"], 1.0, 8.0)
+  style["drift"] = _clampf(style["drift"], 0.0, 5.0)
+  style["arc"] = _clampf(style["arc"], 0.0, 0.8)
+  style["bloom"] = _clampf(style["bloom"], 0.0, 0.7)
+  style["droop"] = _clampf(style["droop"], 0.0, 5.0)
+  style["flutter"] = _clampf(style["flutter"], 0.0, 3.0)
+  style["thickness"] = _clampf(style["thickness"], 0.7, 1.7)
+  style["opacity"] = _clampf(style["opacity"], -0.22, 0.22)
+  style["scatter"] = _clampf(style["scatter"], 0.7, 1.8)
+  style["smooth"] = _clampf(style["smooth"], 0.0, 0.8)
+
+  mix = _clampf(strength, 0.0, 1.0)
+  for key in ("wave", "wave_freq", "jag", "jag_freq", "drift", "arc", "bloom", "droop", "flutter", "thickness", "opacity", "scatter", "smooth"):
+    style[key] = base_style[key] + (style[key] - base_style[key]) * mix
+  return style
+
+
+def grow_motifs_on_skeleton(
+  strokes,
+  fused_motif,
+  axes,
+  imagery_list: list[str] | None = None,
+  style_strength: float = 1.0,
+  canvas_size=800,
+):
   input_canvas = 600.0
   scale_canvas = float(canvas_size) / input_canvas
   safe_axes = max(2, int(axes))
+  style = _build_line_style(imagery_list or [], strength=style_strength)
 
   base_main: Path = fused_motif.get("main_path", []) if isinstance(fused_motif, dict) else []
   base_scatter: list[Path] = fused_motif.get("scatter_paths", []) if isinstance(fused_motif, dict) else []
@@ -993,7 +1138,7 @@ def grow_motifs_on_skeleton(strokes, fused_motif, axes, canvas_size=800):
   drawing_instructions: list[dict[str, Any]] = []
   scaled_strokes: list[Path] = []
 
-  for stroke in strokes:
+  for stroke_idx, stroke in enumerate(strokes):
     if not isinstance(stroke, list) or len(stroke) < 2:
       continue
 
@@ -1015,16 +1160,47 @@ def grow_motifs_on_skeleton(strokes, fused_motif, axes, canvas_size=800):
     nodes = _resample_evenly(scaled_stroke, node_count)
     frames = _compute_frames(nodes)
 
+    phase = style["phase"] + stroke_idx * 0.31
     ribbon: Path = []
     for u, v in _resample_evenly(_normalize_path(base_main), 180):
       node, tangent, normal = _sample_frame(nodes, frames, u)
       growth = 0.35 + 0.65 * math.sin(math.pi * u)
-      half_width = 6.0 + 20.0 * growth
-      lateral = (v - 0.5) * 2.0 * half_width
-      along = 2.0 * (v - 0.5)
+      bloom = 1.0 + style["bloom"] * math.sin(math.pi * u)
+      half_width = (6.0 + 20.0 * growth) * style["thickness"] * bloom
+      wave_shift = style["wave"] * math.sin((2 * math.pi * style["wave_freq"] * u) + phase)
+      jag_shift = style["jag"] * math.sin((2 * math.pi * style["jag_freq"] * u) + phase * 0.7)
+      flutter_shift = style["flutter"] * math.sin((12 * math.pi * u) + (v * 5.0) + phase)
+      lateral = (v - 0.5) * 2.0 * half_width + wave_shift + 0.6 * jag_shift + 0.4 * flutter_shift
+      along = 2.0 * (v - 0.5) + style["drift"] * math.cos((2 * math.pi * u) + phase * 0.3)
+      along += style["arc"] * math.sin(math.pi * u) * (v - 0.5) * 1.8
       px = node[0] + tangent[0] * along + normal[0] * lateral
       py = node[1] + tangent[1] * along + normal[1] * lateral
+      py += style["droop"] * (u ** 1.5) * (0.35 + 0.65 * abs(v - 0.5))
       ribbon.append((px, py))
+
+    smooth_factor = style["smooth"]
+    if smooth_factor > 0.01 and len(ribbon) >= 3:
+      smoothed: Path = [ribbon[0]]
+      for i in range(1, len(ribbon) - 1):
+        prev_pt = ribbon[i - 1]
+        cur_pt = ribbon[i]
+        next_pt = ribbon[i + 1]
+        avg = ((prev_pt[0] + cur_pt[0] + next_pt[0]) / 3, (prev_pt[1] + cur_pt[1] + next_pt[1]) / 3)
+        smoothed.append(_lerp_point(cur_pt, avg, smooth_factor))
+      smoothed.append(ribbon[-1])
+      ribbon = smoothed
+
+    opacity_shift = style["opacity"]
+    main_opacity = [
+      _clampf(0.30 + opacity_shift, 0.08, 0.92),
+      _clampf(0.50 + opacity_shift, 0.08, 0.92),
+      _clampf(0.80 + opacity_shift, 0.08, 0.92),
+    ]
+    main_width = [
+      max(1, int(round(6 * style["thickness"]))),
+      max(1, int(round(4 * style["thickness"]))),
+      max(1, int(round(2 * style["thickness"]))),
+    ]
 
     for ribbon_copy in _apply_symmetry_to_path(ribbon, safe_axes, canvas_size):
       drawing_instructions.append(
@@ -1033,16 +1209,58 @@ def grow_motifs_on_skeleton(strokes, fused_motif, axes, canvas_size=800):
           "part": "main",
           "points": ribbon_copy,
           "color": (0, 0, 0),
-          "width_profile": [6, 4, 2],
-          "opacity_profile": [0.30, 0.50, 0.80],
+          "width_profile": main_width,
+          "opacity_profile": main_opacity,
         }
       )
 
-    bud_count = max(8, min(20, len(nodes) // 2))
+    # Overlay motif signatures directly on the skeleton so imagery shape is more legible.
+    signature_source = _resample_evenly(_normalize_path(base_main), 120)
+    signature_count = max(2, min(6, int(round(2 + style_strength * 4))))
+    signature_span = 0.14 + 0.08 * style_strength
+    signature_scale = (11.0 + 10.0 * style["thickness"]) * (0.8 + 0.9 * style_strength)
+    motif_opacity = [
+      _clampf(0.42 + opacity_shift * 0.7, 0.14, 0.92),
+      _clampf(0.64 + opacity_shift * 0.7, 0.14, 0.92),
+      _clampf(0.88 + opacity_shift * 0.7, 0.14, 0.96),
+    ]
+    motif_width = [
+      max(2, int(round(4 * style["thickness"]))),
+      max(1, int(round(3 * style["thickness"]))),
+      max(1, int(round(2 * style["thickness"]))),
+    ]
+
+    for sig_idx in range(signature_count):
+      t0 = (sig_idx + 1) / (signature_count + 1)
+      sig_path: Path = []
+      for su, sv in signature_source:
+        local_t = _clamp01(t0 + (su - 0.5) * signature_span)
+        node, tangent, normal = _sample_frame(nodes, frames, local_t)
+        along = (su - 0.5) * signature_scale * (1.2 + 0.45 * style["arc"])
+        lateral = (sv - 0.5) * 2.0 * signature_scale
+        lateral += 0.35 * style["wave"] * math.sin((2 * math.pi * su * style["wave_freq"]) + phase)
+        sx = node[0] + tangent[0] * along + normal[0] * lateral
+        sy = node[1] + tangent[1] * along + normal[1] * lateral
+        sy += 0.6 * style["droop"] * (local_t ** 1.5)
+        sig_path.append((sx, sy))
+
+      for sig_copy in _apply_symmetry_to_path(sig_path, safe_axes, canvas_size):
+        drawing_instructions.append(
+          {
+            "kind": "path",
+            "part": "motif",
+            "points": sig_copy,
+            "color": (0, 0, 0),
+            "width_profile": motif_width,
+            "opacity_profile": motif_opacity,
+          }
+        )
+
+    bud_count = int(max(8, min(24, (len(nodes) // 2) * style["scatter"])))
     for _ in range(bud_count):
       bud_source = random.choice(base_scatter) if base_scatter else _resample_evenly(base_main, 70)
       t0 = random.uniform(0.02, 0.98)
-      bud_scale = random.uniform(3.0, 9.0)
+      bud_scale = random.uniform(3.0, 9.0) * style["thickness"]
       span = random.uniform(0.03, 0.09)
       bud_path: Path = []
 
@@ -1063,12 +1281,16 @@ def grow_motifs_on_skeleton(strokes, fused_motif, axes, canvas_size=800):
             "part": "scatter",
             "points": bud_copy,
             "color": (0, 0, 0),
-            "width_profile": [3, 2, 1],
-            "opacity_profile": [0.20, 0.35, 0.55],
+            "width_profile": [max(1, int(round(3 * style["thickness"]))), max(1, int(round(2 * style["thickness"]))), 1],
+            "opacity_profile": [
+              _clampf(0.20 + opacity_shift * 0.8, 0.06, 0.82),
+              _clampf(0.35 + opacity_shift * 0.8, 0.06, 0.82),
+              _clampf(0.55 + opacity_shift * 0.8, 0.06, 0.82),
+            ],
           }
         )
 
-    splat_count = random.randint(6, 12)
+    splat_count = int(max(6, min(18, random.randint(6, 12) * style["scatter"])))
     for _ in range(splat_count):
       t = random.uniform(0.05, 0.95)
       node, _tangent, normal = _sample_frame(nodes, frames, t)
@@ -1121,11 +1343,8 @@ def _hex_to_rgb(color_hex: str) -> tuple[int, int, int]:
 
 
 def _vary_color(base_rgb: tuple[int, int, int], index: int) -> tuple[int, int, int, int]:
-  shift = int(18 * math.sin(index * 0.83) + 10 * math.cos(index * 0.31))
-  r = max(0, min(255, base_rgb[0] + shift))
-  g = max(0, min(255, base_rgb[1] + int(shift * 0.7)))
-  b = max(0, min(255, base_rgb[2] - int(shift * 0.4)))
-  return (r, g, b, 215)
+  del index
+  return (base_rgb[0], base_rgb[1], base_rgb[2], 215)
 
 
 def _shift_hsv(rgb: tuple[int, int, int], dh: float = 0.0, ds: float = 0.0, dv: float = 0.0) -> tuple[int, int, int]:
@@ -1157,169 +1376,410 @@ def _draw_dashed_path(draw_obj: ImageDraw.ImageDraw, path: Path, dash: int, gap:
       draw_obj.line((sampled[i - 1], sampled[i]), fill=fill, width=width)
 
 
-_STAMP_SPACING_PX: float = 50.0
-_MIN_STAMP_SIZE: float = 5.0
-_MAX_STAMP_SIZE: float = 10.0
-_MIN_STAMP_ALPHA: int = 150
-_MAX_STAMP_ALPHA: int = 210
-
-
-def _petal_polygon(
-  cx: float, cy: float, length: float, width: float, angle: float
-) -> list[tuple[float, float]]:
-  """Return polygon points for one narrow-ellipse petal centred at (cx, cy) pointing in direction angle."""
-  cos_a = math.cos(angle)
-  sin_a = math.sin(angle)
-  ex = cx + cos_a * length * 0.45
-  ey = cy + sin_a * length * 0.45
-  pts: list[tuple[float, float]] = []
-  for i in range(12):
-    t = 2 * math.pi * i / 12
-    u = math.cos(t) * length * 0.5
-    v = math.sin(t) * width * 0.45
-    pts.append((ex + cos_a * u - sin_a * v, ey + sin_a * u + cos_a * v))
-  return pts
-
-
-def _draw_stamp(
+def _draw_gradient_path(
   draw_obj: ImageDraw.ImageDraw,
-  imagery: str,
-  cx: float,
-  cy: float,
-  size: float,
-  angle: float,
-  fill: tuple[int, int, int, int],
+  path: Path,
+  start_rgb: tuple[int, int, int],
+  end_rgb: tuple[int, int, int],
+  alpha: int,
+  width: int,
 ) -> None:
-  """Draw a small imagery-specific decorative motif at pixel position (cx, cy)."""
-  a_val = fill[3]
-  if imagery in ("花", "云花"):
-    # 5-petal flower
-    for i in range(5):
-      pa = angle + i * (2 * math.pi / 5)
-      draw_obj.polygon(_petal_polygon(cx, cy, size * 1.1, size * 0.38, pa), fill=fill)
-    cr = max(1.0, size * 0.22)
-    draw_obj.ellipse([cx - cr, cy - cr, cx + cr, cy + cr], fill=(255, 245, 180, a_val))
-  elif imagery == "月":
-    # Crescent polygon: back semicircle of outer circle + reversed same arc on shifted inner circle
-    outer_r = size
-    inner_r = size * 0.72
-    inner_off = size * 0.32
-    face = angle
-    pts_m: list[tuple[float, float]] = []
-    for i in range(13):
-      a = face + math.pi / 2 + math.pi * i / 12
-      pts_m.append((cx + outer_r * math.cos(a), cy + outer_r * math.sin(a)))
-    icx = cx + inner_off * math.cos(face)
-    icy = cy + inner_off * math.sin(face)
-    for i in range(12, -1, -1):
-      a = face + math.pi / 2 + math.pi * i / 12
-      pts_m.append((icx + inner_r * math.cos(a), icy + inner_r * math.sin(a)))
-    draw_obj.polygon(pts_m, fill=fill)
-  elif imagery == "山":
-    # Two overlapping mountain triangles
-    cos_a2 = math.cos(angle)
-    sin_a2 = math.sin(angle)
-    cos_p = math.cos(angle + math.pi / 2)
-    sin_p = math.sin(angle + math.pi / 2)
-    for k, (h, w2) in enumerate([(size * 1.1, size * 0.75), (size * 0.72, size * 0.52)]):
-      offset_w = (k - 0.5) * size * 0.75
-      bx = cx + cos_p * offset_w
-      by = cy + sin_p * offset_w
-      tip = (bx + cos_a2 * h, by + sin_a2 * h)
-      bl = (bx - cos_p * w2, by - sin_p * w2)
-      br = (bx + cos_p * w2, by + sin_p * w2)
-      draw_obj.polygon([tip, bl, br], fill=(fill[0], fill[1], fill[2], max(0, fill[3] - k * 28)))
-  elif imagery == "雪":
-    # 6-arm snowflake with small side branches
-    arm_len = size * 1.1
-    arm_w = max(1, int(size * 0.14))
-    branch_len = arm_len * 0.35
-    for i in range(6):
-      arm_a = angle + i * math.pi / 3
-      ex2 = cx + math.cos(arm_a) * arm_len
-      ey2 = cy + math.sin(arm_a) * arm_len
-      draw_obj.line([(cx, cy), (ex2, ey2)], fill=fill, width=arm_w)
-      mid_x = cx + math.cos(arm_a) * arm_len * 0.55
-      mid_y = cy + math.sin(arm_a) * arm_len * 0.55
-      for delta in (-math.pi / 5, math.pi / 5):
-        ba = arm_a + delta
-        draw_obj.line(
-          [(mid_x, mid_y), (mid_x + math.cos(ba) * branch_len, mid_y + math.sin(ba) * branch_len)],
-          fill=fill, width=arm_w,
-        )
-  elif imagery in ("云", "风"):
-    # 3 overlapping puffs
-    puff_r = size * 0.55
-    for i in range(3):
-      pa = angle + i * (2 * math.pi / 3)
-      ocx = cx + math.cos(pa) * size * 0.42
-      ocy = cy + math.sin(pa) * size * 0.42
-      draw_obj.ellipse([ocx - puff_r, ocy - puff_r, ocx + puff_r, ocy + puff_r], fill=fill)
-  elif imagery in ("水", "柳"):
-    # Wavy line
-    cos_a3 = math.cos(angle)
-    sin_a3 = math.sin(angle)
-    wave_pts: list[tuple[float, float]] = []
-    for i in range(15):
-      t3 = i / 14
-      lx = (t3 - 0.5) * size * 2.6
-      ly = math.sin(t3 * 2 * math.pi) * size * 0.42
-      wave_pts.append((cx + cos_a3 * lx - sin_a3 * ly, cy + sin_a3 * lx + cos_a3 * ly))
-    line_w = max(1, int(size * 0.18))
-    for i in range(1, len(wave_pts)):
-      draw_obj.line([wave_pts[i - 1], wave_pts[i]], fill=fill, width=line_w)
-  else:
-    # Generic: 4-petal cross
-    for i in range(4):
-      pa2 = angle + i * (math.pi / 2)
-      draw_obj.polygon(_petal_polygon(cx, cy, size, size * 0.35, pa2), fill=fill)
+  if len(path) < 2:
+    return
+  sampled = _resample_evenly(path, max(24, min(260, len(path) * 2)))
+  for seg in range(1, len(sampled)):
+    t = seg / (len(sampled) - 1)
+    seg_rgb = _lerp_rgb(start_rgb, end_rgb, t)
+    draw_obj.line(
+      (sampled[seg - 1], sampled[seg]),
+      fill=(seg_rgb[0], seg_rgb[1], seg_rgb[2], alpha),
+      width=max(1, width),
+    )
 
 
-def _generate_stamp_instructions(
-  scaled_strokes: list[Path],
+def _project_normalized_path(
+  path: Path,
+  center: tuple[float, float],
+  scale: float,
+  rotation: float,
+  offset: tuple[float, float] = (0.0, 0.0),
+) -> Path:
+  cos_r = math.cos(rotation)
+  sin_r = math.sin(rotation)
+  projected: Path = []
+  for x, y in path:
+    lx = (x - 0.5) * scale
+    ly = (y - 0.5) * scale
+    rx = lx * cos_r - ly * sin_r
+    ry = lx * sin_r + ly * cos_r
+    projected.append((center[0] + rx + offset[0], center[1] + ry + offset[1]))
+  return projected
+
+
+def _paint_imagery_background(
+  background: Image.Image,
   imagery_list: list[str],
-  axes: int,
-  canvas_size: int,
-) -> list[dict[str, Any]]:
-  """Return imagery_stamp instructions placed at regular intervals along each stroke."""
-  if not imagery_list or not scaled_strokes:
-    return []
-  safe_axes = max(2, int(axes))
-  instructions: list[dict[str, Any]] = []
-  stamp_spacing = _STAMP_SPACING_PX
+  primary_rgb: tuple[int, int, int],
+  secondary_rgb: tuple[int, int, int] | None,
+  style_strength: float,
+) -> None:
+  size = background.size[0]
+  paper_rgb = (245, 240, 230)
+  mix = _clampf(style_strength, 0.0, 1.0)
 
+  top_rgb = _lerp_rgb(paper_rgb, primary_rgb, 0.16 + 0.18 * mix)
+  bottom_seed = secondary_rgb if secondary_rgb is not None else _shift_hsv(primary_rgb, dh=0.08, ds=-0.2, dv=0.1)
+  bottom_rgb = _lerp_rgb(paper_rgb, bottom_seed, 0.12 + 0.14 * mix)
+
+  grad_layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+  grad_draw = ImageDraw.Draw(grad_layer, "RGBA")
+  for y in range(size):
+    t = y / max(1, size - 1)
+    row = _lerp_rgb(top_rgb, bottom_rgb, t)
+    grad_draw.line(((0, y), (size, y)), fill=(row[0], row[1], row[2], 255), width=1)
+
+  motif_layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+  motif_draw = ImageDraw.Draw(motif_layer, "RGBA")
+  center = (size / 2, size / 2)
+
+  valid_imagery = [img for img in imagery_list if img in BASE_MOTIF_GENERATORS]
+  motif_imagery = valid_imagery[:2] if valid_imagery else ["云"]
+  if len(motif_imagery) == 1 and secondary_rgb is not None:
+    motif_imagery.append("花")
+
+  for idx, imagery in enumerate(motif_imagery):
+    generator = BASE_MOTIF_GENERATORS.get(imagery)
+    if generator is None:
+      continue
+
+    source = _resample_evenly(_normalize_path(generator()), 220)
+    base_hex = IMAGERY_COLOR_MAP.get(imagery, "#7A9CAE")
+    base_rgb = _hex_to_rgb(base_hex)
+    paint_rgb = _lerp_rgb(base_rgb, paper_rgb, 0.35)
+
+    scale = size * (0.62 - idx * 0.11 + 0.05 * mix)
+    offset_x = (-0.18 if idx == 0 else 0.18) * size
+    offset_y = (0.05 if idx == 0 else -0.04) * size
+    rotation = (-0.42 if idx == 0 else 0.58) + mix * (0.14 if idx == 0 else -0.12)
+    projected = _project_normalized_path(source, center, scale, rotation, (offset_x, offset_y))
+
+    widths = [max(1, int(round(5 + 2 * mix))), max(1, int(round(3 + mix))), 1]
+    alphas = [int(28 + 48 * mix), int(42 + 64 * mix), int(70 + 86 * mix)]
+    for width_px, alpha in zip(widths, alphas):
+      motif_draw.line(projected, fill=(paint_rgb[0], paint_rgb[1], paint_rgb[2], alpha), width=width_px)
+
+  motif_layer = motif_layer.filter(ImageFilter.GaussianBlur(radius=0.9 + 1.1 * mix))
+  blended = Image.alpha_composite(grad_layer, motif_layer)
+  background.paste(blended, (0, 0))
+
+
+def _point_angle(center: tuple[float, float], point: Point) -> float:
+  angle = math.degrees(math.atan2(point[1] - center[1], point[0] - center[0]))
+  if angle < 0:
+    angle += 360.0
+  return angle
+
+
+def _path_segments_by_sweep(path: Path, center: tuple[float, float], sweep_angle: float) -> list[Path]:
+  if len(path) < 2:
+    return []
+
+  segments: list[Path] = []
+  current: Path = []
+  for i in range(1, len(path)):
+    p0 = path[i - 1]
+    p1 = path[i]
+    visible = _point_angle(center, p1) <= sweep_angle
+    if visible:
+      if not current:
+        current = [p0, p1]
+      else:
+        current.append(p1)
+    elif current:
+      if len(current) > 1:
+        segments.append(current)
+      current = []
+
+  if current and len(current) > 1:
+    segments.append(current)
+  return segments
+
+
+def _collect_motif_bboxes(drawing_instructions: list[dict[str, Any]]) -> list[tuple[float, float, float, float]]:
+  boxes: list[tuple[float, float, float, float]] = []
+  for instruction in drawing_instructions:
+    if instruction.get("kind") != "path":
+      continue
+    points = instruction.get("points", [])
+    if len(points) < 2:
+      continue
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    min_x = min(xs)
+    max_x = max(xs)
+    min_y = min(ys)
+    max_y = max(ys)
+    if max_x - min_x < 1.0 or max_y - min_y < 1.0:
+      continue
+    boxes.append((min_x, min_y, max_x, max_y))
+  return boxes
+
+
+def generate_particles(motif_bboxes, num=300):
+  particles: list[dict[str, Any]] = []
+  if not motif_bboxes:
+    motif_bboxes = [(320.0, 320.0, 480.0, 480.0)]
+
+  centers = [((b[0] + b[2]) * 0.5, (b[1] + b[3]) * 0.5) for b in motif_bboxes]
+  for _ in range(num):
+    bbox = random.choice(motif_bboxes)
+    cx = random.uniform(bbox[0], bbox[2])
+    cy = random.uniform(bbox[1], bbox[3])
+    nearest = min(centers, key=lambda c: (c[0] - cx) ** 2 + (c[1] - cy) ** 2)
+    base_angle = math.atan2(cy - nearest[1], cx - nearest[0])
+    theta = base_angle + random.uniform(-0.7, 0.7)
+    speed = random.uniform(0.4, 2.1)
+    max_life = random.randint(20, 40)
+    particles.append(
+      {
+        "x": cx,
+        "y": cy,
+        "vx": math.cos(theta) * speed,
+        "vy": math.sin(theta) * speed,
+        "life": max_life,
+        "max_life": max_life,
+        "size": random.randint(1, 3),
+        "color": random.choice(PARTICLE_PALETTE),
+      }
+    )
+  return particles
+
+
+def update_particles(particles):
+  alive: list[dict[str, Any]] = []
+  for p in particles:
+    p["life"] -= 1
+    if p["life"] <= 0:
+      continue
+    p["x"] += p["vx"]
+    p["y"] += p["vy"]
+    p["vx"] *= 0.98
+    p["vy"] *= 0.98
+    alive.append(p)
+  return alive
+
+
+def draw_particles(draw_obj: ImageDraw.ImageDraw, particles, canvas):
+  del canvas
+  for p in particles:
+    if p["life"] <= 0:
+      continue
+    ratio = max(0.0, min(1.0, p["life"] / max(1, p["max_life"])))
+    rgb = _hex_to_rgb(p["color"])
+    alpha = int(40 + 200 * ratio)
+    glow_alpha = int(16 + 88 * ratio)
+    # Slightly tighten sparkle radius while preserving velocity/life updates.
+    r = float(p["size"]) * 0.82
+    draw_obj.ellipse((p["x"] - (r + 1.8), p["y"] - (r + 1.8), p["x"] + (r + 1.8), p["y"] + (r + 1.8)), fill=(rgb[0], rgb[1], rgb[2], glow_alpha))
+    draw_obj.ellipse((p["x"] - r, p["y"] - r, p["x"] + r, p["y"] + r), fill=(rgb[0], rgb[1], rgb[2], alpha))
+
+
+def _scale_path(points: Path, center: tuple[float, float], scale: float) -> Path:
+  if scale == 1.0:
+    return points
+  return [
+    (
+      center[0] + (x - center[0]) * scale,
+      center[1] + (y - center[1]) * scale,
+    )
+    for x, y in points
+  ]
+
+
+def _render_pattern_image(
+  size: int,
+  axes: int,
+  scaled_strokes: list[Path],
+  drawing_instructions: list[dict[str, Any]],
+  imagery_list: list[str],
+  primary_rgb: tuple[int, int, int],
+  secondary_rgb: tuple[int, int, int] | None,
+  style_strength: float,
+  main_rgb: tuple[int, int, int],
+  scatter_rgb: tuple[int, int, int],
+  main_rgb_2: tuple[int, int, int] | None,
+  scatter_rgb_2: tuple[int, int, int] | None,
+  reveal_progress: float | None = None,
+  particles_state: dict[str, Any] | None = None,
+  skeleton_alpha: int = 40,
+  color_phase: float = 0.0,
+) -> Image.Image:
+  phase = color_phase % 1.0
+  pulse = math.sin(phase * 2 * math.pi)
+
+  bg_primary = _shift_hsv(primary_rgb, dh=0.01 * pulse, ds=0.03 * pulse, dv=0.05 * pulse)
+  bg_secondary = None
+  if secondary_rgb is not None:
+    bg_secondary = _shift_hsv(secondary_rgb, dh=-0.008 * pulse, ds=0.025 * pulse, dv=0.04 * pulse)
+
+  dyn_main_rgb = _shift_hsv(main_rgb, dh=0.018 * pulse, ds=0.04 * pulse, dv=0.06 * pulse)
+  dyn_scatter_rgb = _shift_hsv(scatter_rgb, dh=-0.015 * pulse, ds=0.03 * pulse, dv=0.06 * pulse)
+  dyn_main_rgb_2 = _shift_hsv(main_rgb_2, dh=0.014 * pulse, ds=0.03 * pulse, dv=0.05 * pulse) if main_rgb_2 is not None else None
+  dyn_scatter_rgb_2 = _shift_hsv(scatter_rgb_2, dh=-0.012 * pulse, ds=0.03 * pulse, dv=0.05 * pulse) if scatter_rgb_2 is not None else None
+
+  center = (size / 2, size / 2)
+  background = Image.new("RGBA", (size, size), (245, 240, 230, 255))
+  _paint_imagery_background(background, imagery_list, bg_primary, bg_secondary, style_strength)
+  draw_bg = ImageDraw.Draw(background, "RGBA")
+
+  step = (2 * math.pi) / axes
   for stroke in scaled_strokes:
     if len(stroke) < 2:
       continue
-    total_len = sum(_distance(stroke[i], stroke[i + 1]) for i in range(len(stroke) - 1))
-    stamp_count = max(2, int(total_len / stamp_spacing))
-    nodes = _resample_evenly(stroke, max(stamp_count * 5, 24))
-    frames = _compute_frames(nodes)
-    for j in range(stamp_count):
-      t = (j + 0.5) / stamp_count
-      node, tangent, _normal = _sample_frame(nodes, frames, t)
-      tang_angle = math.atan2(tangent[1], tangent[0])
-      img_type = imagery_list[j % len(imagery_list)]
-      stamp_size = random.uniform(_MIN_STAMP_SIZE, _MAX_STAMP_SIZE)
-      for axis_idx in range(safe_axes):
-        rot = axis_idx * (2 * math.pi / safe_axes)
+    for i in range(1, len(stroke)):
+      p1 = stroke[i - 1]
+      p2 = stroke[i]
+      for axis_idx in range(axes):
+        angle = axis_idx * step
         for mirrored in (False, True):
-          sx, sy = _transform_point(node[0], node[1], rot, mirrored, canvas_size / 2)
-          stamp_a = tang_angle + rot + (math.pi if mirrored else 0.0)
-          instructions.append({
-            "kind": "imagery_stamp",
-            "imagery": img_type,
-            "center": (sx, sy),
-            "size": stamp_size,
-            "angle": stamp_a,
-          })
-  return instructions
+          a1 = _transform_point(p1[0], p1[1], angle, mirrored, center[0])
+          a2 = _transform_point(p2[0], p2[1], angle, mirrored, center[0])
+          _draw_dashed_path(draw_bg, [a1, a2], dash=3, gap=2, fill=(138, 130, 117, skeleton_alpha), width=1)
+
+  overlay = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+  overlay_draw = ImageDraw.Draw(overlay, "RGBA")
+  sweep = None if reveal_progress is None else max(0.0, min(360.0, reveal_progress * 360.0))
+  growth_scale = 1.0
+  if reveal_progress is not None:
+    growth_scale = min(1.0, max(0.0, reveal_progress / 0.3))
+
+  new_points: list[Point] = []
+  prev_sweep = 0.0
+  if particles_state is not None:
+    prev_sweep = float(particles_state.get("prev_sweep", 0.0))
+
+  for idx, instruction in enumerate(drawing_instructions):
+    kind = instruction.get("kind")
+    if kind == "splat":
+      center_pt = instruction.get("center")
+      if not center_pt:
+        continue
+      radius = float(instruction.get("radius", 1.2))
+      src_opacity = float(instruction.get("opacity", 0.16))
+      alpha = int(max(0.08, min(0.35, src_opacity)) * 255)
+      if dyn_scatter_rgb_2 is not None:
+        blend_t = (idx % 17) / 16
+        blended = _lerp_rgb(dyn_scatter_rgb, dyn_scatter_rgb_2, blend_t)
+        base = (blended[0], blended[1], blended[2], 215)
+      else:
+        base = _vary_color(dyn_scatter_rgb, idx)
+      overlay_draw.ellipse(
+        (
+          center_pt[0] - radius,
+          center_pt[1] - radius,
+          center_pt[0] + radius,
+          center_pt[1] + radius,
+        ),
+        fill=(base[0], base[1], base[2], alpha),
+      )
+      continue
+
+    if kind != "path":
+      continue
+
+    path = instruction.get("points", [])
+    if len(path) < 2:
+      continue
+    path = _scale_path(path, center, growth_scale)
+
+    part = instruction.get("part", "main")
+    is_main_like = part in ("main", "motif")
+    base_seed = dyn_main_rgb if is_main_like else dyn_scatter_rgb
+    base = _vary_color(base_seed, idx)
+    widths = instruction.get("width_profile", [6, 4, 2])
+    opacities = instruction.get("opacity_profile", [0.30, 0.50, 0.80])
+
+    segments = [path]
+    if sweep is not None:
+      segments = _path_segments_by_sweep(path, center, sweep)
+      if segments:
+        for segment in segments:
+          for p in segment:
+            ang = _point_angle(center, p)
+            if prev_sweep < ang <= sweep:
+              new_points.append(p)
+
+    for segment in segments:
+      if len(segment) < 2:
+        continue
+      if dyn_main_rgb_2 is not None and dyn_scatter_rgb_2 is not None:
+        grad_start = dyn_main_rgb if is_main_like else dyn_scatter_rgb
+        grad_end = dyn_main_rgb_2 if is_main_like else dyn_scatter_rgb_2
+        for width_px, opacity in zip(widths, opacities):
+          alpha = int(max(0.0, min(1.0, float(opacity))) * 255)
+          _draw_gradient_path(overlay_draw, segment, grad_start, grad_end, alpha, int(round(width_px)))
+      else:
+        for width_px, opacity in zip(widths, opacities):
+          alpha = int(max(0.0, min(1.0, float(opacity))) * 255)
+          overlay_draw.line(segment, fill=(base[0], base[1], base[2], alpha), width=max(1, int(round(width_px))))
+
+  overlay = overlay.filter(ImageFilter.GaussianBlur(radius=0.8))
+  image = Image.alpha_composite(background, overlay)
+  draw_image = ImageDraw.Draw(image, "RGBA")
+
+  if particles_state is not None:
+    motif_bboxes = _collect_motif_bboxes(drawing_instructions)
+    particles = particles_state.setdefault("particles", [])
+    if new_points:
+      burst_boxes = [(p[0] - 12, p[1] - 12, p[0] + 12, p[1] + 12) for p in random.sample(new_points, k=min(36, len(new_points)))]
+      particles.extend(generate_particles(burst_boxes, num=min(80, max(12, len(new_points) // 3))))
+    if len(particles) < 180:
+      refill = min(120, 180 - len(particles))
+      particles.extend(generate_particles(motif_bboxes, num=refill))
+    particles_state["particles"] = update_particles(particles)
+    particles_state["prev_sweep"] = sweep if sweep is not None else 360.0
+    draw_particles(draw_image, particles_state["particles"], size)
+  else:
+    motif_bboxes = _collect_motif_bboxes(drawing_instructions)
+    static_particles = generate_particles(motif_bboxes, num=300)
+    static_particles = update_particles(static_particles)
+    draw_particles(draw_image, static_particles, size)
+
+  stamp_text = "璇玑诗绘"
+  stamp_font = ImageFont.load_default()
+  stamp_bbox = draw_image.textbbox((0, 0), stamp_text, font=stamp_font)
+  stamp_w = stamp_bbox[2] - stamp_bbox[0]
+  stamp_h = stamp_bbox[3] - stamp_bbox[1]
+  sx = size - stamp_w - 24
+  sy = size - stamp_h - 18
+  draw_image.text((sx, sy), stamp_text, fill=(146, 66, 55, 150), font=stamp_font)
+  return image
 
 
 def _finalize_png_response(image: Image.Image) -> Response:
   output = io.BytesIO()
   image.save(output, format="PNG")
   return Response(output.getvalue(), mimetype="image/png")
+
+
+def _finalize_gif_response(frames: list[Image.Image], duration_ms: int = 70, final_hold_ms: int = 1400) -> Response:
+  if not frames:
+    return _finalize_png_response(_build_fallback_image("生成过程中发生错误"))
+
+  rgb_frames = [frame.convert("RGB") for frame in frames]
+  frame_durations = [max(20, duration_ms)] * len(rgb_frames)
+  frame_durations[-1] = max(frame_durations[-1], final_hold_ms)
+  output = io.BytesIO()
+  rgb_frames[0].save(
+    output,
+    format="GIF",
+    save_all=True,
+    append_images=rgb_frames[1:],
+    duration=frame_durations,
+    optimize=False,
+    disposal=2,
+  )
+  return Response(output.getvalue(), mimetype="image/gif")
 
 
 def _build_fallback_image(message: str, size: int = 800) -> Image.Image:
@@ -1365,6 +1825,13 @@ def generate() -> Response:
   try:
     payload = request.get_json(silent=True) or {}
     axes = _clamp_axes(payload.get("axes", 6))
+    style_strength = _clamp_strength(payload.get("styleStrength", 0.7))
+    animated = _as_bool(payload.get("animated"), default=False)
+    try:
+      frame_count = int(payload.get("frames", 36))
+    except (TypeError, ValueError):
+      frame_count = 36
+    frame_count = max(12, min(72, frame_count))
     strokes = payload.get("strokes", [])
     poem = str(payload.get("poem", "")).strip()
 
@@ -1374,123 +1841,61 @@ def generate() -> Response:
 
     imagery_list = extract_imagery(poem)
     fused_motif = fuse_motifs(imagery_list)
-    drawing_instructions, scaled_strokes = grow_motifs_on_skeleton(strokes, fused_motif, axes, canvas_size=800)
+    drawing_instructions, scaled_strokes = grow_motifs_on_skeleton(
+      strokes,
+      fused_motif,
+      axes,
+      imagery_list=imagery_list,
+      style_strength=style_strength,
+      canvas_size=800,
+    )
 
     size = 800
-    center = size / 2
-    stamp_instructions = _generate_stamp_instructions(scaled_strokes, imagery_list, axes, size)
-    drawing_instructions.extend(stamp_instructions)
-    background = Image.new("RGBA", (size, size), (245, 240, 230, 255))
-    draw = ImageDraw.Draw(background, "RGBA")
+    color_imagery = [img for img in imagery_list if img in IMAGERY_COLOR_MAP]
+    first_imagery = color_imagery[0] if color_imagery else "云"
+    second_imagery = color_imagery[1] if len(color_imagery) > 1 else None
 
-    first_imagery = imagery_list[0] if imagery_list else "云"
     primary_hex = IMAGERY_COLOR_MAP.get(first_imagery, "#7A9CAE")
     primary_rgb = _hex_to_rgb(primary_hex)
-    cloud_flower_blend = ("云" in imagery_list and "花" in imagery_list) or ("云花" in imagery_list)
-
-    # Draw faint skeleton lines with subtle dashes.
-    step = (2 * math.pi) / axes
-    for stroke in scaled_strokes:
-      if len(stroke) < 2:
-        continue
-      for i in range(1, len(stroke)):
-        p1 = stroke[i - 1]
-        p2 = stroke[i]
-        for axis_idx in range(axes):
-          angle = axis_idx * step
-          for mirrored in (False, True):
-            a1 = _transform_point(p1[0], p1[1], angle, mirrored, center)
-            a2 = _transform_point(p2[0], p2[1], angle, mirrored, center)
-            _draw_dashed_path(draw, [a1, a2], dash=3, gap=2, fill=(120, 110, 100, 40), width=1)
-
-    overlay = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    overlay_draw = ImageDraw.Draw(overlay, "RGBA")
+    secondary_rgb = _hex_to_rgb(IMAGERY_COLOR_MAP[second_imagery]) if second_imagery else None
 
     main_rgb = _shift_hsv(primary_rgb, dh=0.0, ds=-0.05, dv=0.04)
     scatter_rgb = _shift_hsv(primary_rgb, dh=0.03, ds=-0.18, dv=0.10)
-    cloud_rgb = _hex_to_rgb(IMAGERY_COLOR_MAP.get("云", "#7A9CAE"))
-    flower_rgb = _hex_to_rgb(IMAGERY_COLOR_MAP.get("花", "#D96C7A"))
-    wisteria_rgb = _hex_to_rgb("#c5a3b4")
+    main_rgb_2 = _shift_hsv(secondary_rgb, dh=0.0, ds=-0.05, dv=0.04) if secondary_rgb else None
+    scatter_rgb_2 = _shift_hsv(secondary_rgb, dh=0.03, ds=-0.18, dv=0.10) if secondary_rgb else None
 
-    for idx, instruction in enumerate(drawing_instructions):
-      kind = instruction.get("kind")
-      if kind == "path":
-        path = instruction.get("points", [])
-        if len(path) < 2:
-          continue
-        part = instruction.get("part", "main")
-        base_seed = main_rgb if part == "main" else scatter_rgb
-        base = _vary_color(base_seed, idx)
-        widths = instruction.get("width_profile", [6, 4, 2])
-        opacities = instruction.get("opacity_profile", [0.30, 0.50, 0.80])
-        if cloud_flower_blend and part == "main":
-          sampled = _resample_evenly(path, max(30, min(220, len(path) * 2)))
-          for width_px, opacity in zip(widths, opacities):
-            alpha = int(max(0.0, min(1.0, float(opacity))) * 255)
-            width_int = max(1, int(round(width_px)))
-            for seg in range(1, len(sampled)):
-              t = seg / (len(sampled) - 1)
-              if t <= 0.5:
-                seg_rgb = _lerp_rgb(flower_rgb, wisteria_rgb, t / 0.5)
-              else:
-                seg_rgb = _lerp_rgb(wisteria_rgb, cloud_rgb, (t - 0.5) / 0.5)
-              overlay_draw.line((sampled[seg - 1], sampled[seg]), fill=(seg_rgb[0], seg_rgb[1], seg_rgb[2], alpha), width=width_int)
-        else:
-          for width_px, opacity in zip(widths, opacities):
-            alpha = int(max(0.0, min(1.0, float(opacity))) * 255)
-            overlay_draw.line(path, fill=(base[0], base[1], base[2], alpha), width=max(1, int(round(width_px))))
-      elif kind == "splat":
-        center_pt = instruction.get("center")
-        if not center_pt:
-          continue
-        radius = float(instruction.get("radius", 1.2))
-        src_opacity = float(instruction.get("opacity", 0.16))
-        random_alpha = max(0.08, min(0.35, src_opacity * random.uniform(0.8, 1.35)))
-        alpha = int(random_alpha * 255)
-        base = _vary_color(scatter_rgb, idx)
-        overlay_draw.ellipse(
-          (
-            center_pt[0] - radius,
-            center_pt[1] - radius,
-            center_pt[0] + radius,
-            center_pt[1] + radius,
-          ),
-          fill=(base[0], base[1], base[2], alpha),
+    render_kwargs = {
+      "size": size,
+      "axes": axes,
+      "scaled_strokes": scaled_strokes,
+      "drawing_instructions": drawing_instructions,
+      "imagery_list": imagery_list,
+      "primary_rgb": primary_rgb,
+      "secondary_rgb": secondary_rgb,
+      "style_strength": style_strength,
+      "main_rgb": main_rgb,
+      "scatter_rgb": scatter_rgb,
+      "main_rgb_2": main_rgb_2,
+      "scatter_rgb_2": scatter_rgb_2,
+    }
+
+    if animated:
+      particles_state: dict[str, Any] = {"particles": [], "prev_sweep": 0.0}
+      frames: list[Image.Image] = []
+      for frame_idx in range(frame_count):
+        phase = frame_idx / frame_count
+        frame = _render_pattern_image(
+          **render_kwargs,
+          reveal_progress=None,
+          particles_state=particles_state,
+          skeleton_alpha=32,
+          color_phase=phase,
         )
-      elif kind == "imagery_stamp":
-        center_pt = instruction.get("center")
-        if not center_pt:
-          continue
-        img_type = str(instruction.get("imagery", first_imagery))
-        stamp_size = float(instruction.get("size", 7.0))
-        stamp_angle = float(instruction.get("angle", 0.0))
-        stamp_hex = IMAGERY_COLOR_MAP.get(img_type, primary_hex)
-        stamp_rgb = _hex_to_rgb(stamp_hex)
-        stamp_alpha = random.randint(_MIN_STAMP_ALPHA, _MAX_STAMP_ALPHA)
-        _draw_stamp(
-          overlay_draw,
-          img_type,
-          center_pt[0],
-          center_pt[1],
-          stamp_size,
-          stamp_angle,
-          (stamp_rgb[0], stamp_rgb[1], stamp_rgb[2], stamp_alpha),
-        )
+        frames.append(frame)
+      return _finalize_gif_response(frames, duration_ms=70)
 
-    overlay = overlay.filter(ImageFilter.GaussianBlur(radius=0.8))
-    image = Image.alpha_composite(background, overlay)
-    draw = ImageDraw.Draw(image, "RGBA")
-
-    stamp_text = "璇玑—万象"
-    stamp_font = ImageFont.load_default()
-    stamp_bbox = draw.textbbox((0, 0), stamp_text, font=stamp_font)
-    stamp_w = stamp_bbox[2] - stamp_bbox[0]
-    stamp_h = stamp_bbox[3] - stamp_bbox[1]
-    sx = size - stamp_w - 24
-    sy = size - stamp_h - 18
-    draw.text((sx, sy), stamp_text, fill=(146, 66, 55, 150), font=stamp_font)
-
-    return _finalize_png_response(image.convert("RGB"))
+    static_image = _render_pattern_image(**render_kwargs)
+    return _finalize_png_response(static_image.convert("RGB"))
   except Exception:
     fallback = _build_fallback_image("生成过程中发生错误")
     return _finalize_png_response(fallback)
@@ -1498,4 +1903,5 @@ def generate() -> Response:
 
 if __name__ == "__main__":
   port = int(os.environ.get("PORT", 5000))
-  app.run(host="0.0.0.0", port=port, debug=True)
+  debug_mode = _as_bool(os.environ.get("FLASK_DEBUG"), default=False)
+  app.run(host="0.0.0.0", port=port, debug=debug_mode)
